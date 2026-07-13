@@ -16,6 +16,7 @@ interface DisciplineCardProps {
 }
 
 export function DisciplineCard({ discipline, onClick, available, blocked, onRestrictedAction }: DisciplineCardProps) {
+<<<<<<< HEAD
   const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus } = useApp();
   const { isSimplified } = useMode();
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
@@ -28,6 +29,15 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
   const showCompletedStyles = isCompleted;
   const showFailedStyles = isFailed;
   const showDroppedStyles = isDropped;
+=======
+  const { completedDisciplines, toggleCompletedDiscipline } = useApp();
+  const { isSimplified } = useMode();
+  const { isFavorite, toggleFavorite } = useFavoriteCourses();
+
+  const isCompleted = completedDisciplines.includes(discipline.code);
+  const favorite = isFavorite(discipline.code);
+  const showCompletedStyles = isCompleted;
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   const showBlocked = !!blocked;
   const showAvailable = !!available;
 
@@ -64,10 +74,15 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
         "flex h-full flex-col",
         "transition-all duration-200 hover:shadow-card-hover hover:scale-[1.02]",
         showCompletedStyles && "border-success/50 bg-success/5",
+<<<<<<< HEAD
         showFailedStyles && "border-destructive/50 bg-destructive/5",
         showDroppedStyles && "border-border bg-muted/40 opacity-75",
         !showCompletedStyles && !showFailedStyles && !showDroppedStyles && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
         !showCompletedStyles && !showFailedStyles && !showDroppedStyles && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
+=======
+        !showCompletedStyles && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
+        !showCompletedStyles && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       )}
       onClick={onClick}
     >
@@ -77,10 +92,13 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
             "px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold",
             showCompletedStyles
               ? "bg-success/10 text-success"
+<<<<<<< HEAD
               : showFailedStyles
               ? "bg-destructive/10 text-destructive"
               : showDroppedStyles
               ? "bg-muted text-muted-foreground"
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
               : showAvailable
               ? "bg-warning/10 text-warning"
               : showBlocked

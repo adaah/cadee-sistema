@@ -2,14 +2,18 @@ import { ReactNode } from 'react';
 import { AppSidebar } from './AppSidebar';
 import { MobileNav } from './MobileNav';
 import { MobileHeader } from './MobileHeader';
+<<<<<<< HEAD
 import { NewSemesterModal } from '@/components/semester/NewSemesterModal';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 
 interface MainLayoutProps {
   children: ReactNode;
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+<<<<<<< HEAD
   const {
     pendingTransition,
     planningTerm,
@@ -19,6 +23,8 @@ export function MainLayout({ children }: MainLayoutProps) {
     advanceToNewSemester,
   } = useSemesterTransition();
 
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   return (
     <div className="flex min-h-screen w-full bg-background">
       <AppSidebar />
@@ -27,6 +33,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         {children}
       </main>
       <MobileNav />
+<<<<<<< HEAD
       <NewSemesterModal
         open={pendingTransition}
         planningTerm={planningTerm}
@@ -35,6 +42,8 @@ export function MainLayout({ children }: MainLayoutProps) {
         canAdvance={canAdvance}
         onAdvance={advanceToNewSemester}
       />
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     </div>
   );
 }
