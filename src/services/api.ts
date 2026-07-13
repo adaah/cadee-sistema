@@ -77,6 +77,10 @@ export interface Section {
     code: string;
     name: string;
   };
+<<<<<<< HEAD
+  term?: string;
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   id_ref: string;
   location_table: string;
   mode: string;

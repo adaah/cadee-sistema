@@ -3,17 +3,33 @@ import { AdvancedSemesterGrid } from './AdvancedSemesterGrid';
 import { useApp } from '@/contexts/AppContext';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { useMyCourses } from '@/hooks/useMyCourses';
+<<<<<<< HEAD
+import { useMySections } from '@/hooks/useMySections';
+import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { fetchProgramDetail, type ProgramDetail } from '@/services/api';
 import { parseCompleteHistory, type WorkloadData } from '@/utils/historyParser';
+import { getCourseWorkload, getWorkloadCategory, mergeSemesterOutcomes, sumWorkloadByCategory } from '@/lib/semester';
+=======
+import { fetchProgramDetail, type ProgramDetail } from '@/services/api';
+import { parseCompleteHistory, type WorkloadData } from '@/utils/historyParser';
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 import { GraduationCap, BookOpen, Clock, Info, Upload, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from 'react';
 
 export function ProgressView() {
+<<<<<<< HEAD
+  const { completedDisciplines, toggleCompletedDiscipline, semesterOutcomes } = useApp();
+  const { myPrograms } = useMyPrograms();
+  const { courses, isLoading: coursesLoading } = useMyCourses();
+  const { mySections } = useMySections();
+  const { currentTerm } = useCurrentTerm();
+=======
   const { completedDisciplines, toggleCompletedDiscipline } = useApp();
   const { myPrograms } = useMyPrograms();
   const { courses, isLoading: coursesLoading } = useMyCourses();
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   
   // Estados para importação de histórico
   const [showImportModal, setShowImportModal] = useState(false);
@@ -221,6 +237,91 @@ export function ProgressView() {
     }
   }, [hasImportedData, hasDismissedWelcome]);
 
+<<<<<<< HEAD
+  const curriculumRequirements = useMemo(
+    () => sumWorkloadByCategory(courses),
+    [courses]
+  );
+
+  // Calcular horas adicionais de disciplinas marcadas manualmente (fora do histórico importado)
+  const manualWorkloadBonus = useMemo(() => {
+    const importedCodes = new Set(parsedCodes);
+    const bonus = { mandatory: 0, elective: 0, complementary: 0 };
+
+    const allApproved = new Set([
+      ...completedDisciplines,
+      ...Object.values(semesterOutcomes).flatMap((o) => o.approved),
+    ]);
+
+    for (const code of allApproved) {
+      if (importedCodes.has(code)) continue;
+      const course = courses.find((c) => c.code === code);
+      if (!course) continue;
+      const hours = getCourseWorkload(course);
+      const category = getWorkloadCategory(course.type);
+      bonus[category] += hours;
+    }
+
+    return bonus;
+  }, [completedDisciplines, semesterOutcomes, parsedCodes, courses]);
+
+  const enrolledCodes = useMemo(
+    () => mySections.map((s) => s.course?.code).filter(Boolean) as string[],
+    [mySections]
+  );
+
+  const usesCurriculumTotals = !parsedWorkload;
+
+  // Calcular métricas baseadas no histórico importado + marcações manuais + grade curricular
+  const progressData = useMemo(() => {
+    const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory;
+    const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective;
+    const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary;
+
+    const mandatoryCompleted =
+      (parsedWorkload?.mandatory.completed ?? 0) + manualWorkloadBonus.mandatory;
+    const electivesCompleted =
+      (parsedWorkload?.elective.completed ?? 0) + manualWorkloadBonus.elective;
+    const complementaryCompleted =
+      (parsedWorkload?.complementary.completed ?? 0) + manualWorkloadBonus.complementary;
+    const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
+
+    return {
+      totalHours,
+      mandatory: { completed: mandatoryCompleted, total: mandatoryTotal },
+      electives: { completed: electivesCompleted, total: electivesTotal },
+      complementary: { completed: complementaryCompleted, total: complementaryTotal },
+      totalSemesters: parsedSemesters.size || courseLevels.length || 8,
+    };
+  }, [
+    parsedWorkload,
+    parsedSemesters,
+    manualWorkloadBonus,
+    curriculumRequirements,
+    courseLevels.length,
+  ]);
+
+  const mergedSemesters = useMemo(() => {
+    let result = mergeSemesterOutcomes(parsedSemesters, semesterOutcomes, currentTerm);
+
+    if (currentTerm && !result.find((s) => s.term === currentTerm)) {
+      const outcome = semesterOutcomes[currentTerm];
+      const approved = outcome?.approved.length ?? 0;
+      const failed = outcome?.failed.length ?? 0;
+      const dropped = outcome?.dropped.length ?? 0;
+      const notDone = Math.max(0, enrolledCodes.length - approved - failed - dropped);
+
+      if (approved + failed + dropped + notDone > 0) {
+        result = [
+          ...result,
+          { term: currentTerm, approved, failed, dropped, notDone, isCurrent: true },
+        ];
+      }
+    }
+
+    return result.sort((a, b) => a.term.localeCompare(b.term));
+  }, [parsedSemesters, semesterOutcomes, currentTerm, enrolledCodes]);
+=======
   // Calcular métricas baseadas apenas no histórico importado
   const calculateProgressMetrics = () => {
     // Se tiver dados de carga horária do histórico, usa esses dados
@@ -254,6 +355,7 @@ export function ProgressView() {
   };
 
   const progressData = useMemo(() => calculateProgressMetrics(), [parsedWorkload, parsedSemesters]);
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 
   const totalRequiredHours = progressData.mandatory.total + progressData.electives.total + progressData.complementary.total;
   const overallProgress = totalRequiredHours > 0 
@@ -376,6 +478,10 @@ export function ProgressView() {
           current={progressData.mandatory.completed} 
           total={progressData.mandatory.total}
           showInfo
+<<<<<<< HEAD
+          isEstimated={usesCurriculumTotals}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
           infoText="Horas de disciplinas obrigatórias do curso."
         />
         <ProgressCard 
@@ -383,6 +489,10 @@ export function ProgressView() {
           current={progressData.electives.completed} 
           total={progressData.electives.total}
           showInfo
+<<<<<<< HEAD
+          isEstimated={usesCurriculumTotals}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
           infoText="Horas de disciplinas optativas."
         />
         <ProgressCard 
@@ -390,6 +500,10 @@ export function ProgressView() {
           current={progressData.complementary.completed} 
           total={progressData.complementary.total}
           showInfo
+<<<<<<< HEAD
+          isEstimated={usesCurriculumTotals}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
           infoText="Horas de atividades complementares."
         />
       </div>
@@ -458,31 +572,116 @@ export function ProgressView() {
       </div>
 
       {/* Advanced Semester Grid */}
+<<<<<<< HEAD
+      <AdvancedSemesterGrid
+        courses={courses}
+        completedDisciplines={completedDisciplines}
+        enrolledCodes={enrolledCodes}
+        courseLevels={courseLevels}
+        currentTerm={currentTerm}
+        showInfo
+        infoText="Progresso real por semestre baseado nas disciplinas obrigatórias do curso e nas que você já concluiu ou planejou."
+=======
       <AdvancedSemesterGrid 
         courses={courses}
         completedDisciplines={completedDisciplines}
         courseLevels={courseLevels}
         showInfo
         infoText="Progresso real por semestre baseado nas disciplinas obrigatórias do curso e nas que você já concluiu."
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       />
 
       {/* Aproveitamento Section */}
       <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex items-center justify-between mb-4">
+<<<<<<< HEAD
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-medium text-foreground">Aproveitamento</h3>
+            {currentTerm && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                Vigente: {currentTerm}
+              </span>
+            )}
+=======
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium text-foreground">Aproveitamento</h3>
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="w-3.5 h-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>
+<<<<<<< HEAD
+                  <p className="text-xs max-w-[250px]">Aproveitamento por período letivo. O semestre vigente ({currentTerm || '—'}) é destacado e inclui resultados marcados na tela inicial.</p>
+=======
                   <p className="text-xs max-w-[250px]">Visualização detalhada do aproveitamento por semestre cursado, mostrando disciplinas aprovadas, reprovadas, trancadas e não cursadas.</p>
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
         </div>
+<<<<<<< HEAD
+
+        <div className="space-y-3">
+          {mergedSemesters.map(({ term, approved, failed, dropped, notDone, isCurrent }) => {
+            const total = approved + failed + dropped + notDone;
+
+            return (
+              <div
+                key={term}
+                className={`space-y-2 rounded-lg p-2 -mx-2 ${isCurrent ? 'bg-primary/5 border border-primary/20' : ''}`}
+              >
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className={isCurrent ? 'font-semibold text-primary' : 'text-muted-foreground'}>
+                      {term}
+                    </span>
+                    {isCurrent && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                        Atual
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground text-xs">
+                    {approved}/{total} disciplinas
+                  </span>
+                </div>
+                <div className="grid grid-cols-8 gap-1">
+                  {Array.from({ length: total }).map((_, index) => {
+                    let colorClass: string;
+                    let title: string;
+
+                    if (index < approved) {
+                      colorClass = 'bg-green-500';
+                      title = 'Aprovação';
+                    } else if (index < approved + failed) {
+                      colorClass = 'bg-red-500';
+                      title = 'Reprovação';
+                    } else if (index < approved + failed + dropped) {
+                      colorClass = 'bg-gray-700';
+                      title = 'Trancamento';
+                    } else {
+                      colorClass = 'bg-gray-300';
+                      title = 'Não feito';
+                    }
+
+                    return (
+                      <div
+                        key={index}
+                        className={`h-4 rounded-sm ${colorClass}`}
+                        title={title}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+
+          {mergedSemesters.length === 0 && (
+=======
         
         <div className="space-y-3">
           {/* Semestres cursados com aproveitamento real */}
@@ -533,6 +732,7 @@ export function ProgressView() {
           
           {/* Se não tiver dados importados, mostrar vazio para usuário novo */}
           {parsedSemesters.size === 0 && (
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
             <div className="text-center py-8">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-muted flex items-center justify-center">
                 <GraduationCap className="w-8 h-8 text-muted-foreground" />

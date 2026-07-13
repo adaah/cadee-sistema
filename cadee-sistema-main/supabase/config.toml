@@ -1,0 +1,4 @@
+project_id = "ezupytejdcledagzgaku"
+
+[functions.sigaa-proxy]
+verify_jwt = false

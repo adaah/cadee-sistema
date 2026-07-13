@@ -1,4 +1,14 @@
 import { useMemo, useState, useEffect } from 'react';
+<<<<<<< HEAD
+import { useMySections } from '@/hooks/useMySections';
+import { MainLayout } from '@/components/layout/MainLayout';
+import { useMyPrograms } from '@/hooks/useMyPrograms';
+import { useMyCourses } from '@/hooks/useMyCourses';
+import { ScheduleSummary } from '@/components/planner/ScheduleSummary';
+import { useCurrentTerm } from '@/hooks/useCurrentTerm';
+import { useSemesterTransition } from '@/hooks/useSemesterTransition';
+import { Calendar, BookOpen, BarChart3, X, Sparkles, GraduationCap, Clock, AlertTriangle, Plus } from 'lucide-react';
+=======
 import { useApp } from '@/contexts/AppContext';
 import { useMySections } from '@/hooks/useMySections';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -8,10 +18,23 @@ import { ScheduleSummary } from '@/components/planner/ScheduleSummary';
 import { MobileSchedule } from '@/components/planner/MobileSchedule';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Calendar, BookOpen, BarChart3, X, Sparkles, Settings, GraduationCap } from 'lucide-react';
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 import { Link } from 'react-router-dom';
 import { ProgressView } from '@/components/progress/ProgressView';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useMode } from '@/hooks/useMode';
+<<<<<<< HEAD
+import { sumWorkloadByCategory } from '@/lib/semester';
+
+const Index = () => {
+  const { mySections } = useMySections();
+  const { myPrograms } = useMyPrograms();
+  const { courses } = useMyCourses();
+  const { currentTerm } = useCurrentTerm();
+  const { pendingTransition, planningTerm, canAdvance, advanceToNewSemester, unresolvedCodes } = useSemesterTransition();
+  const [activeTab, setActiveTab] = useState<'schedule' | 'progress'>('schedule');
+  const { setMode, isFull, isSimplified } = useMode();
+=======
 
 const Index = () => {
   const { completedDisciplines } = useApp();
@@ -20,6 +43,7 @@ const Index = () => {
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<'schedule' | 'progress'>('schedule');
   const { mode, setMode, isFull, isSimplified } = useMode();
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
   useEffect(() => {
@@ -29,6 +53,36 @@ const Index = () => {
     }
   }, []);
 
+<<<<<<< HEAD
+  const coursesByCode = useMemo(
+    () => new Map(courses.map((c) => [c.code, c])),
+    [courses]
+  );
+
+  const plannedDisciplines = useMemo(() => {
+    const unique = new Map<string, typeof mySections[0]>();
+    for (const s of mySections) {
+      const code = s.course?.code || (s as { course_code?: string }).course_code;
+      if (code) unique.set(code, s);
+    }
+    return [...unique.entries()];
+  }, [mySections]);
+
+  const scheduledCount = plannedDisciplines.length;
+
+  const workloadBreakdown = useMemo(() => {
+    const plannedCourses = plannedDisciplines
+      .map(([code]) => coursesByCode.get(code))
+      .filter((c): c is NonNullable<typeof c> => !!c);
+    const byCategory = sumWorkloadByCategory(plannedCourses);
+    return {
+      mandatory: byCategory.mandatory,
+      elective: byCategory.elective,
+      complementary: byCategory.complementary,
+      total: byCategory.mandatory + byCategory.elective + byCategory.complementary,
+    };
+  }, [plannedDisciplines, coursesByCode]);
+=======
   // Get unique scheduled disciplines
   const scheduledCount = useMemo(() => {
     const unique = new Set(mySections.map(s => (s as any)?.course?.code || (s as any)?.course_code));
@@ -43,23 +97,58 @@ const Index = () => {
       return sum + (Number(workload) || 0);
     }, 0);
   }, [mySections]);
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 
   const renderTabContent = () => {
     if (activeTab === 'progress') {
       return <ProgressView />;
     }
+<<<<<<< HEAD
+=======
 
     // Schedule view (default) - Sem grade, apenas resumo
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     return <ScheduleSummary />;
   };
 
   return (
     <MainLayout>
+<<<<<<< HEAD
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto animate-fade-in">
+=======
       <div className="p-6 max-w-7xl mx-auto animate-fade-in">
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
         {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
+<<<<<<< HEAD
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+                  {activeTab === 'schedule' ? 'Controle do Semestre' : 'Meu Progresso'}
+                </h1>
+                {currentTerm && activeTab === 'schedule' && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                    {pendingTransition ? planningTerm : currentTerm}
+                  </span>
+                )}
+              </div>
+              {myPrograms.length > 0 && (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm mt-1">
+                  <GraduationCap className="w-4 h-4 shrink-0" />
+                  <span className="truncate">UFBA • {myPrograms[0]?.title || 'Seu Curso'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Tabs */}
+            <div className="inline-flex items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground w-full sm:w-auto">
+              <button
+                onClick={() => setActiveTab('schedule')}
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === 'schedule'
+                    ? 'bg-background text-foreground shadow'
+=======
               <h1 className="text-2xl font-bold text-foreground">
                 {activeTab === 'schedule' ? 'Resumo do Semestre' : 'Meu Progresso'}
               </h1>
@@ -78,10 +167,20 @@ const Index = () => {
                 className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${
                   activeTab === 'schedule' 
                     ? 'bg-background text-foreground shadow' 
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                     : 'hover:bg-background/50 hover:text-foreground'
                 }`}
               >
                 <Calendar className="w-4 h-4 mr-2" />
+<<<<<<< HEAD
+                Planejamento
+              </button>
+              <button
+                onClick={() => setActiveTab('progress')}
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === 'progress'
+                    ? 'bg-background text-foreground shadow'
+=======
                 Grade
               </button>
               <button
@@ -89,6 +188,7 @@ const Index = () => {
                 className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ${
                   activeTab === 'progress' 
                     ? 'bg-background text-foreground shadow' 
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                     : 'hover:bg-background/50 hover:text-foreground'
                 }`}
               >
@@ -99,6 +199,112 @@ const Index = () => {
           </div>
         </div>
 
+<<<<<<< HEAD
+        {/* Dashboard do semestre atual */}
+        {activeTab === 'schedule' && (
+          <>
+            {pendingTransition && (
+              <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                      Novo semestre {currentTerm} disponível
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                      Finalize a grade do semestre {planningTerm}: remova as turmas ou marque o resultado de cada disciplina.
+                      {unresolvedCodes.length > 0 && (
+                        <> Faltam <strong>{unresolvedCodes.length}</strong> disciplina{unresolvedCodes.length > 1 ? 's' : ''}.</>
+                      )}
+                    </p>
+                    {canAdvance && (
+                      <button
+                        onClick={advanceToNewSemester}
+                        className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90"
+                      >
+                        Iniciar semestre {currentTerm}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+              <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span className="text-xs">Disciplinas Planejadas</span>
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-card-foreground">{scheduledCount}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">na grade do semestre</p>
+              </div>
+
+              <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
+                <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <span className="text-xs">Carga Horária</span>
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-card-foreground">{workloadBreakdown.total}h</p>
+                <div className="mt-1.5 space-y-0.5">
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">{workloadBreakdown.mandatory}h</span>
+                    {' '}obrigatórias
+                  </p>
+                  <p className="text-[10px] sm:text-xs text-muted-foreground">
+                    <span className="font-semibold text-purple-600 dark:text-purple-400">{workloadBreakdown.elective}h</span>
+                    {' '}optativas
+                  </p>
+                  {workloadBreakdown.complementary > 0 && (
+                    <p className="text-[10px] sm:text-xs text-muted-foreground">
+                      <span className="font-semibold text-green-600 dark:text-green-400">{workloadBreakdown.complementary}h</span>
+                      {' '}complementares
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {scheduledCount === 0 ? (
+              <div className="bg-card rounded-xl border border-dashed border-border p-8 text-center">
+                <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Plus className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="font-semibold text-foreground mb-2">Nenhuma disciplina planejada</h3>
+                <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
+                  Adicione disciplinas no Planejador para montar sua grade do semestre {currentTerm || 'atual'}.
+                </p>
+                <Link
+                  to="/planejador"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
+                >
+                  Ir para o Planejador
+                </Link>
+              </div>
+            ) : (
+              !pendingTransition && (
+              <div className="mb-4 flex justify-end">
+                <Link
+                  to="/planejador"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  Editar grade no Planejador
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14" />
+                    <path d="m12 5 7 7-7 7" />
+                  </svg>
+                </Link>
+              </div>
+              )
+            )}
+          </>
+        )}
+
+        {renderTabContent()}
+      </div>
+
+      {/* Modal de Boas-Vindas */}
+=======
         {/* Quick Stats - Only show on schedule tab */}
         {activeTab === 'schedule' && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
@@ -139,6 +345,7 @@ const Index = () => {
       </div>
 
       {/* Modal de Boas-Vindas (primeira visita) */}
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       <AnimatePresence>
         {showWelcomeModal && (
           <motion.div
@@ -163,7 +370,11 @@ const Index = () => {
                   </div>
                   <div>
                     <p className="text-lg font-semibold text-foreground">Bem-vindo ao CADEE!</p>
+<<<<<<< HEAD
+                    <p className="text-sm text-muted-foreground">Seu controle de planejamento semestral</p>
+=======
                     <p className="text-sm text-muted-foreground">Seu planejador semestral inteligente</p>
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                   </div>
                 </div>
                 <button onClick={() => setShowWelcomeModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -173,12 +384,21 @@ const Index = () => {
 
               <div className="space-y-3 mb-6">
                 <p className="text-sm text-foreground leading-relaxed">
+<<<<<<< HEAD
+                  O CADEE te ajuda a montar e acompanhar sua grade do semestre {currentTerm || 'atual'}.
+                  Planeje disciplinas, acompanhe carga horária e marque resultados ao final do período.
+                </p>
+                {isFull && (
+                  <p className="text-sm text-muted-foreground">
+                    No modo completo, você também pode gerenciar sua formação: registrar disciplinas já cursadas,
+=======
                   O CADEE te ajuda a montar sua grade de horários de forma visual e inteligente. 
                   Compare turmas, veja conflitos em tempo real e planeje seu semestre com tranquilidade.
                 </p>
                 {isFull && (
                   <p className="text-sm text-muted-foreground">
                     No modo completo, você também pode gerenciar sua formação: registrar disciplinas já cursadas, 
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                     acompanhar seu progresso e planejar os semestres futuros.
                   </p>
                 )}

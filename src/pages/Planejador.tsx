@@ -9,6 +9,11 @@ import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { cn, getReservedUnfilledBonus, getReservedUnfilledForTitles } from '@/lib/utils';
 import { useMyCourses } from "@/hooks/useMyCourses.ts";
 import { useMySections } from '@/hooks/useMySections';
+<<<<<<< HEAD
+import { useCurrentTerm } from '@/hooks/useCurrentTerm';
+import { buildCurrentTermSectionIndex, filterSectionsByCurrentTerm, mergeProgramCoursesWithOffered } from '@/lib/semester';
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getCompetitionLevel, getPhase1Level, getPhase2Level } from '@/lib/competition';
@@ -21,6 +26,10 @@ import { getSpplitedCode } from '@/lib/schedule';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueries } from '@tanstack/react-query';
 import { fetchProgramDetail } from '@/services/api';
+<<<<<<< HEAD
+import { useSemesterTransition } from '@/hooks/useSemesterTransition';
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const diasSemana = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
@@ -101,6 +110,10 @@ const parseTimeCodes = (timeCodes: string[]): Array<{ dia: string; horarioInicio
 const DisciplineCard = memo(({ course, onClick }: { course: Course; onClick: (course: Course) => void }) => {
   const { completedDisciplines } = useApp();
   const isCompleted = completedDisciplines.includes(course.code);
+<<<<<<< HEAD
+  const isOffered = (course.level || '').includes('Ofertada');
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   
   return (
     <div 
@@ -116,7 +129,18 @@ const DisciplineCard = memo(({ course, onClick }: { course: Course; onClick: (co
           </Badge>
         </div>
       )}
+<<<<<<< HEAD
+      <div className="font-semibold text-xs md:text-sm mb-1 flex items-center gap-2 flex-wrap">
+        <span>{course.code}</span>
+        {isOffered && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+            Ofertada
+          </Badge>
+        )}
+      </div>
+=======
       <div className="font-semibold text-xs md:text-sm mb-1">{course.code}</div>
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
         {course.name}
       </div>
@@ -265,6 +289,11 @@ const Planejador = () => {
   const { hasSectionOnCourse, toggleSection, getConflictsForSection, mySections, clearSections } = useMySections();
   const { completedDisciplines } = useApp();
   const { data: allSections = [] } = useSections();
+<<<<<<< HEAD
+  const { currentTerm } = useCurrentTerm();
+  const { pendingTransition, planningTerm } = useSemesterTransition();
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
   const [applyFiltersToSections, setApplyFiltersToSections] = useState(true);
 
@@ -282,6 +311,52 @@ const Planejador = () => {
       .replace(/\p{Diacritic}+/gu, '')
       .toLowerCase();
 
+<<<<<<< HEAD
+  const currentTermSectionData = useMemo(
+    () => buildCurrentTermSectionIndex(allSections, currentTerm),
+    [allSections, currentTerm]
+  );
+
+  const programTitlesForOffer = useMemo(() => {
+    if (selectedViewProgramId) {
+      const program = allPrograms.find((p) => p.id_ref === selectedViewProgramId);
+      const title = program?.title?.trim().toLowerCase();
+      return new Set(title ? [title] : []);
+    }
+    return myProgramTitles;
+  }, [selectedViewProgramId, allPrograms, myProgramTitles]);
+
+  const plannerCourses = useMemo(
+    () =>
+      mergeProgramCoursesWithOffered(
+        courses,
+        allSections,
+        coursesIndex,
+        currentTerm,
+        programTitlesForOffer,
+        currentTermSectionData.sectionCountByCode
+      ),
+    [courses, allSections, coursesIndex, currentTerm, programTitlesForOffer, currentTermSectionData.sectionCountByCode]
+  );
+
+  // Filtrar disciplinas por termo de busca e filtros - otimizado
+  const disciplinasFiltradas = useMemo(() => {
+    if (!plannerCourses || plannerCourses.length === 0) return [];
+
+    let result = plannerCourses;
+
+    // Apenas disciplinas com turmas no semestre letivo vigente
+    if (currentTerm) {
+      result = result.filter((course) => currentTermSectionData.codesWithSections.has(course.code));
+    } else {
+      result = result.filter((course) => (course.sections_count || 0) > 0);
+    }
+
+    result = result.map((course) => ({
+      ...course,
+      sections_count: currentTermSectionData.sectionCountByCode.get(course.code) ?? course.sections_count ?? 0,
+    }));
+=======
   // Filtrar disciplinas por termo de busca e filtros - otimizado
   const disciplinasFiltradas = useMemo(() => {
     if (!courses || courses.length === 0) return [];
@@ -290,6 +365,7 @@ const Planejador = () => {
     
     // Filtrar disciplinas com 0 turmas
     result = result.filter(course => (course.sections_count || 0) > 0);
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     
     // Filtrar disciplinas cursadas se não estiverem visíveis
     if (!showCompleted) {
@@ -318,6 +394,17 @@ const Planejador = () => {
       .map(d => mapSiglaParaNome[d as keyof typeof mapSiglaParaNome])
       .filter(Boolean);
 
+<<<<<<< HEAD
+    const sectionsByCourse = currentTerm
+      ? currentTermSectionData.sectionsByCourse
+      : allSections.reduce((acc, section) => {
+          const code = (section as any)?.course?.code || (section as any)?.course_code || '';
+          if (!code) return acc;
+          if (!acc.has(code)) acc.set(code, [] as Section[]);
+          acc.get(code)!.push(section);
+          return acc;
+        }, new Map<string, Section[]>());
+=======
     const sectionsByCourse = allSections.reduce((acc, section) => {
       const code = (section as any)?.course?.code || (section as any)?.course_code || '';
       if (!code) return acc;
@@ -325,6 +412,7 @@ const Planejador = () => {
       acc.get(code)!.push(section);
       return acc;
     }, new Map<string, Section[]>());
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 
     const matchesSection = (section: Section) => {
       const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
@@ -373,7 +461,11 @@ const Planejador = () => {
       return sections.some(matchesSection);
     });
   }, [
+<<<<<<< HEAD
+    plannerCourses,
+=======
     courses,
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     searchTerm,
     showCompleted,
     completedDisciplines,
@@ -385,6 +477,22 @@ const Planejador = () => {
     logicaFiltroHorario,
     logicaRestricoes,
     logicaRestricoesHorario,
+<<<<<<< HEAD
+    allSections,
+    currentTerm,
+    currentTermSectionData,
+  ]);
+
+  const totalTurmasSemestre = useMemo(() => {
+    if (!plannerCourses) return 0;
+    if (currentTerm) {
+      return plannerCourses.reduce((total, course) => {
+        return total + (currentTermSectionData.sectionCountByCode.get(course.code) || 0);
+      }, 0);
+    }
+    return plannerCourses.reduce((total, course) => total + (course.sections_count || 0), 0);
+  }, [plannerCourses, currentTerm, currentTermSectionData]);
+=======
     allSections
   ]);
 
@@ -395,6 +503,7 @@ const Planejador = () => {
       return total + (course.sections_count || 0);
     }, 0);
   }, [courses]);
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
 
   // Função para carregar as turmas de uma disciplina
   const handleShowSections = (course: Course, options?: { ignoreFilters?: boolean }) => {
@@ -481,6 +590,15 @@ const Planejador = () => {
   return (
     <MainLayout>
       <div className="p-4 md:p-6 max-w-7xl mx-auto animate-fade-in">
+<<<<<<< HEAD
+        {pendingTransition && (
+          <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 text-sm text-amber-800 dark:text-amber-200">
+            <strong>Novo semestre {currentTerm}.</strong> Finalize a grade do semestre {planningTerm} na{' '}
+            <a href="/" className="underline font-medium">tela inicial</a> antes de planejar novas disciplinas.
+          </div>
+        )}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
         {/* Cabeçalho */}
         <div className="mb-6">
           <h1 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
@@ -560,6 +678,14 @@ const Planejador = () => {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="font-semibold text-card-foreground">Disciplinas do Curso</h3>
+<<<<<<< HEAD
+                  {currentTerm && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Ofertas do semestre {currentTerm}
+                    </p>
+                  )}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                   {selectedViewProgramId && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Visualizando: {allPrograms.find(p => p.id_ref === selectedViewProgramId)?.title || 'Outro curso'}
@@ -567,7 +693,11 @@ const Planejador = () => {
                   )}
                 </div>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border cursor-default">
+<<<<<<< HEAD
+                  {disciplinasFiltradas.length} disciplinas • {totalTurmasSemestre} turmas
+=======
                   {courses?.length || 0} disciplinas • {totalTurmasSemestre} turmas
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                 </span>
               </div>
 
@@ -927,6 +1057,10 @@ const Planejador = () => {
                   ) : (
                     <SectionsList 
                       courseCode={selectedCourse.code}
+<<<<<<< HEAD
+                      currentTerm={currentTerm}
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
                       onCourseClick={handleShowSectionsNoFilters}
                       diasSelecionados={applyFiltersToSections ? diasSelecionados : []}
                       horariosSelecionados={applyFiltersToSections ? horariosSelecionados : []}
@@ -1458,13 +1592,22 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
 // Componente para listar as seções de uma disciplina
 function SectionsList({ 
   courseCode, 
+<<<<<<< HEAD
+  currentTerm,
+=======
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   onCourseClick,
   diasSelecionados,
   horariosSelecionados,
   diasRestritos,
   horariosRestritos
 }: { 
+<<<<<<< HEAD
+  courseCode: string;
+  currentTerm: string | null;
+=======
   courseCode: string; 
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   onCourseClick: (course: Course) => void;
   diasSelecionados: string[];
   horariosSelecionados: string[];
@@ -1475,6 +1618,22 @@ function SectionsList({
   const { toggleSection, hasSectionOnCourse, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
   const { myPrograms } = useMyPrograms();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
+<<<<<<< HEAD
+
+  const sectionsThisTerm = useMemo(
+    () => filterSectionsByCurrentTerm(sections, currentTerm),
+    [sections, currentTerm]
+  );
+  
+  // Filtrar turmas com base nos filtros de dias e horários
+  const filteredSections = useMemo(() => {
+    if (!sectionsThisTerm.length) return sectionsThisTerm;
+    
+    // Se não há filtros aplicados, retorna todas as seções do semestre vigente
+    if (diasSelecionados.length === 0 && horariosSelecionados.length === 0 && 
+        diasRestritos.length === 0 && horariosRestritos.length === 0) {
+      return sectionsThisTerm;
+=======
   
   // Filtrar turmas com base nos filtros de dias e horários
   const filteredSections = useMemo(() => {
@@ -1484,6 +1643,7 @@ function SectionsList({
     if (diasSelecionados.length === 0 && horariosSelecionados.length === 0 && 
         diasRestritos.length === 0 && horariosRestritos.length === 0) {
       return sections;
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     }
 
     const selectedDias = diasSelecionados
@@ -1493,7 +1653,11 @@ function SectionsList({
       .map(d => mapSiglaParaNome[d as keyof typeof mapSiglaParaNome])
       .filter(Boolean);
     
+<<<<<<< HEAD
+    return sectionsThisTerm.filter(section => {
+=======
     return sections.filter(section => {
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
       if (timeCodes.length === 0) return true; // Se não tem horários definidos, inclui
       
@@ -1534,7 +1698,11 @@ function SectionsList({
       
       return true;
     });
+<<<<<<< HEAD
+  }, [sectionsThisTerm, diasSelecionados, horariosSelecionados, diasRestritos, horariosRestritos]);
+=======
   }, [sections, diasSelecionados, horariosSelecionados, diasRestritos, horariosRestritos]);
+>>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   
   // Buscar detalhes da disciplina para pré-requisitos e corequisitos
   const { data: courseDetail } = useCourseByCode(courseCode);
