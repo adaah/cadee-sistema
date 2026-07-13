@@ -1525,22 +1525,15 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
 // Componente para listar as seções de uma disciplina
 function SectionsList({ 
   courseCode, 
-<<<<<<< HEAD
   currentTerm,
-=======
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   onCourseClick,
   diasSelecionados,
   horariosSelecionados,
   diasRestritos,
   horariosRestritos
 }: { 
-<<<<<<< HEAD
   courseCode: string;
   currentTerm: string | null;
-=======
-  courseCode: string; 
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   onCourseClick: (course: Course) => void;
   diasSelecionados: string[];
   horariosSelecionados: string[];
@@ -1551,7 +1544,6 @@ function SectionsList({
   const { toggleSection, hasSectionOnCourse, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
   const { myPrograms } = useMyPrograms();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
-<<<<<<< HEAD
 
   const sectionsThisTerm = useMemo(
     () => filterSectionsByCurrentTerm(sections, currentTerm),
@@ -1566,17 +1558,6 @@ function SectionsList({
     if (diasSelecionados.length === 0 && horariosSelecionados.length === 0 && 
         diasRestritos.length === 0 && horariosRestritos.length === 0) {
       return sectionsThisTerm;
-=======
-  
-  // Filtrar turmas com base nos filtros de dias e horários
-  const filteredSections = useMemo(() => {
-    if (!sections.length) return sections;
-    
-    // Se não há filtros aplicados, retorna todas as seções
-    if (diasSelecionados.length === 0 && horariosSelecionados.length === 0 && 
-        diasRestritos.length === 0 && horariosRestritos.length === 0) {
-      return sections;
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
     }
 
     const selectedDias = diasSelecionados
@@ -1586,11 +1567,7 @@ function SectionsList({
       .map(d => mapSiglaParaNome[d as keyof typeof mapSiglaParaNome])
       .filter(Boolean);
     
-<<<<<<< HEAD
     return sectionsThisTerm.filter(section => {
-=======
-    return sections.filter(section => {
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
       const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
       if (timeCodes.length === 0) return true; // Se não tem horários definidos, inclui
       
@@ -1631,11 +1608,7 @@ function SectionsList({
       
       return true;
     });
-<<<<<<< HEAD
   }, [sectionsThisTerm, diasSelecionados, horariosSelecionados, diasRestritos, horariosRestritos]);
-=======
-  }, [sections, diasSelecionados, horariosSelecionados, diasRestritos, horariosRestritos]);
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
   
   // Buscar detalhes da disciplina para pré-requisitos e corequisitos
   const { data: courseDetail } = useCourseByCode(courseCode);

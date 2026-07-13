@@ -10,7 +10,6 @@ export function getSpplitedCode(code: string): string[] {
   const shiftsArr = shifts.split('');
   const slotsArr = slots.split('');
 
-<<<<<<< HEAD
   const cartesian = liftN(3)((d: string, s: string, t: string) => `${d}${s}${t}`);
   return cartesian(daysArr, shiftsArr, slotsArr) as string[];
 }
@@ -75,9 +74,3 @@ export function formatTimeCodes(timeCodes: string[]): string[] {
     (h) => `${h.dia} ${h.horarioInicio} - ${h.horarioFim}`
   );
 }
-=======
-  // Functional cartesian using Ramda: lift a ternary combiner over 3 arrays
-  const cartesian = liftN(3)((d: string, s: string, t: string) => `${d}${s}${t}`);
-  return cartesian(daysArr, shiftsArr, slotsArr) as string[];
-}
->>>>>>> 6cf8892a564b1bf37153af61a5515e91e5c07d59
