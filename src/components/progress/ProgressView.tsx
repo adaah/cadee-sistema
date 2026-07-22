@@ -23,7 +23,6 @@ export function ProgressView() {
   // Estados para importação de histórico
   const [showImportModal, setShowImportModal] = useState(false);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const [hasDismissedWelcome, setHasDismissedWelcome] = useState(false);
   const [importText, setImportText] = useState('');
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const [parsedSemesters, setParsedSemesters] = useState<Map<string, { approved: number, failed: number, dropped: number, notDone: number }>>(new Map());
@@ -174,9 +173,6 @@ export function ProgressView() {
       }
     });
     
-    // Resetar o estado de dispensado do modal já que agora tem dados
-    setHasDismissedWelcome(false);
-    
     // Manter os dados de carga horária extraídos para uso nas métricas
     // parsedWorkload já está no estado, não precisa limpar aqui
     
@@ -211,20 +207,13 @@ export function ProgressView() {
   // Determinar se há dados importados (considera workload ou códigos/semestres carregados do histórico)
   const hasImportedData = !!parsedWorkload || parsedCodes.length > 0 || parsedSemesters.size > 0;
 
-  // Mostrar modal de boas-vindas se não houver dados importados e usuário não tiver dispensado
+  // Mostrar modal de boas-vindas apenas na primeira vez que acessa a tela
   useEffect(() => {
-    // Só mostra o modal se não tiver dados importados E não tiver dispensado anteriormente
-    if (!hasImportedData && !hasDismissedWelcome) {
-      // Pequeno delay para garantir que os dados do localStorage foram carregados
-      const timer = setTimeout(() => {
-        if (!hasImportedData && !hasDismissedWelcome) {
-          setShowWelcomeModal(true);
-        }
-      }, 100);
-      
-      return () => clearTimeout(timer);
+    const hasVisitedProgress = localStorage.getItem('firstVisitProgresso');
+    if (!hasVisitedProgress) {
+      setShowWelcomeModal(true);
     }
-  }, [hasImportedData, hasDismissedWelcome]);
+  }, []);
 
   const curriculumRequirements = useMemo(
     () => sumWorkloadByCategory(courses),
@@ -262,6 +251,24 @@ export function ProgressView() {
 
   // Calcular métricas baseadas no histórico importado + marcações manuais + grade curricular
   const progressData = useMemo(() => {
+    // Se não houver histórico importado, usa apenas dados manuais do planejador
+    if (!parsedWorkload) {
+      // Usa apenas as disciplinas marcadas manualmente
+      const mandatoryCompleted = manualWorkloadBonus.mandatory;
+      const electivesCompleted = manualWorkloadBonus.elective;
+      const complementaryCompleted = manualWorkloadBonus.complementary;
+      const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
+
+      return {
+        totalHours,
+        mandatory: { completed: mandatoryCompleted, total: mandatoryCompleted },
+        electives: { completed: electivesCompleted, total: electivesCompleted },
+        complementary: { completed: complementaryCompleted, total: complementaryCompleted },
+        totalSemesters: courseLevels.length || 8,
+      };
+    }
+
+    // Com histórico importado, usa os dados do histórico + manuais
     const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory;
     const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective;
     const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary;
@@ -337,15 +344,15 @@ export function ProgressView() {
                 <span>Limpar dados</span>
               </button>
             )}
-            <button
-              onClick={() => setShowImportModal(true)}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted ${
-                hasImportedData ? 'p-1.5 sm:p-2 sm:px-3' : ''
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              {hasImportedData && <span className="hidden sm:inline">Importar histórico</span>}
-            </button>
+            {hasImportedData && (
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border text-xs font-medium hover:bg-muted"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Importar histórico</span>
+              </button>
+            )}
             {hasImportedData && (
               <button
                 onClick={() => {
@@ -431,7 +438,7 @@ export function ProgressView() {
           current={progressData.mandatory.completed} 
           total={progressData.mandatory.total}
           showInfo
-          isEstimated={usesCurriculumTotals}
+          isEstimated={false}
           infoText="Horas de disciplinas obrigatórias do curso."
         />
         <ProgressCard 
@@ -439,7 +446,7 @@ export function ProgressView() {
           current={progressData.electives.completed} 
           total={progressData.electives.total}
           showInfo
-          isEstimated={usesCurriculumTotals}
+          isEstimated={false}
           infoText="Horas de disciplinas optativas."
         />
         <ProgressCard 
@@ -447,7 +454,7 @@ export function ProgressView() {
           current={progressData.complementary.completed} 
           total={progressData.complementary.total}
           showInfo
-          isEstimated={usesCurriculumTotals}
+          isEstimated={false}
           infoText="Horas de atividades complementares."
         />
       </div>
@@ -702,7 +709,7 @@ export function ProgressView() {
                   <button
                     onClick={() => {
                       setShowWelcomeModal(false);
-                      setHasDismissedWelcome(true);
+                      localStorage.setItem('firstVisitProgresso', 'true');
                     }}
                     className="flex-1 px-4 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-muted"
                   >
@@ -711,6 +718,7 @@ export function ProgressView() {
                   <button
                     onClick={() => {
                       setShowWelcomeModal(false);
+                      localStorage.setItem('firstVisitProgresso', 'true');
                       setShowImportModal(true);
                     }}
                     className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
@@ -739,35 +747,35 @@ export function ProgressView() {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
               transition={{ duration: 0.18 }}
-              className="w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border/60 p-6 space-y-4"
+              className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-card rounded-2xl shadow-xl border border-border/60 p-4 sm:p-6 space-y-4"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                     <Upload className="w-5 h-5 text-primary" />
                   </div>
-                  <div>
-                    <p className="text-lg font-semibold text-foreground">Importar histórico para progresso</p>
-                    <p className="text-sm text-muted-foreground">
+                  <div className="min-w-0">
+                    <p className="text-base sm:text-lg font-semibold text-foreground">Importar histórico para progresso</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       Envie o PDF ou cole o texto do histórico para calcular seu progresso real no curso.
                     </p>
                   </div>
                 </div>
-                <button onClick={() => setShowImportModal(false)} className="text-muted-foreground hover:text-foreground">
+                <button onClick={() => setShowImportModal(false)} className="text-muted-foreground hover:text-foreground shrink-0">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <div className="space-y-3">
                 <label className="flex items-center gap-2 px-4 py-3 border rounded-lg cursor-pointer hover:bg-muted">
-                  <Upload className="w-4 h-4" />
+                  <Upload className="w-4 h-4 shrink-0" />
                   <span className="text-sm">Selecionar PDF</span>
                   <input type="file" accept=".pdf,text/plain" className="hidden" onChange={handleFileChange} />
                 </label>
 
                 <textarea
-                  className="w-full min-h-[140px] rounded-lg border border-border bg-background p-3 text-sm"
+                  className="w-full min-h-[100px] sm:min-h-[140px] rounded-lg border border-border bg-background p-3 text-sm"
                   placeholder="Cole aqui o texto do histórico (Ctrl+A, Ctrl+C no PDF aberto)"
                   value={importText}
                   onChange={(e) => handleParseImport(e.target.value)}

@@ -1,4 +1,4 @@
-import { AlertCircle, Clock, Plus, Users, Eraser, ArrowLeftRight, BadgeInfo, AlertTriangle, Star, Flame, Trash2 } from 'lucide-react';
+import { AlertCircle, Clock, Plus, Users, Eraser, ArrowLeftRight, AlertTriangle, Star, Flame, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Section } from '@/services/api';
 import { useMySections } from '@/hooks/useMySections';
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { Progress } from '@/components/ui/progress';
 import { getReservedUnfilledBonus, getReservedUnfilledForTitles } from '@/lib/utils';
+import { formatTimeCodes } from '@/lib/schedule';
 
 interface SectionCardProps {
   section: Section;
@@ -113,11 +114,26 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary text-primary-foreground inline-flex items-center gap-1 cursor-default">
-                      <Star className="w-3 h-3" /> Reservado ({reservedRemaining})
+                      <Star className="w-3 h-3" /> Reservado para o curso {reservedRemaining} vagas
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
                     <div>Vagas reservadas ao(s) seu(s) programa(s) selecionado(s).</div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {/* Sem reservas */}
+            {!hasExclusive && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground inline-flex items-center gap-1 cursor-default">
+                      Sem reservas para o curso
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div>Esta turma não possui vagas reservadas para o seu curso.</div>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -133,37 +149,6 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
               );
             })()}
             */}
-            {/* Tags por fase com tooltip */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className={cn("px-2 py-0.5 rounded text-xs font-medium inline-flex items-center gap-1 cursor-default", compPhase1.colorClass)}>
-                    <BadgeInfo className="w-3 h-3" /> Etapa 1: {compPhase1.label} ({seatsRequested})
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div>
-                    <div>Solicitações (Etapa 1): {seatsRequested}</div>
-                    <div>Vagas Totais: {seatsCount}</div>
-                    <div>Razão: {compPhase1.ratio.toFixed(2)}</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className={cn("px-2 py-0.5 rounded text-xs font-medium inline-flex items-center gap-1 cursor-default", compPhase2.colorClass)}>
-                    <BadgeInfo className="w-3 h-3" /> Etapa 2: {compPhase2.label} ({seatsRerequested})
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div>
-                    <div>Solicitações (Etapa 2): {seatsRerequested}</div>
-                    <div>Vagas Remanescentes: {Math.max(0, seatsCount - seatsAccepted)}</div>
-                    <div>Razão: {compPhase2.ratio.toFixed(2)}</div>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           </div>
 
           {(() => {
@@ -192,23 +177,31 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
           })()}
 
           <div className="mt-2 pt-2 border-t border-border">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Clock className="w-4 h-4" />
-                <span>
-                  {(Array.isArray(section.time_codes) && section.time_codes.length > 0
-                      ? section.time_codes.join(', ')
-                      : 'Horário a definir')}
-                </span>
+            <div className="space-y-2">
+              <div className="flex items-start gap-1 text-sm text-muted-foreground">
+                <Clock className="w-4 h-4 mt-0.5 shrink-0" />
+                {(() => {
+                  const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
+                  const formattedSchedules = formatTimeCodes(timeCodes);
+                  return (
+                    <div className="grid gap-1" style={{ gridTemplateColumns: formattedSchedules.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
+                      {formattedSchedules.length > 0 ? (
+                        formattedSchedules.map((h, i) => {
+                          const [day, time] = h.split(' ');
+                          return (
+                            <span key={i} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono text-center min-h-[40px] flex flex-col items-center justify-center">
+                              <span className="font-semibold">{day}</span>
+                              <span className="text-[10px]">{time}</span>
+                            </span>
+                          );
+                        })
+                      ) : (
+                        <span className="text-xs">Horário a definir</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
-
-            <div className="mt-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                <span>Vagas preenchidas</span>
-                <span>{seatsAccepted}/{seatsCount}</span>
-              </div>
-              <Progress value={seatsCount > 0 ? Math.min(100, Math.max(0, Math.round((seatsAccepted / seatsCount) * 100))) : 0} />
             </div>
 
             {(() => {

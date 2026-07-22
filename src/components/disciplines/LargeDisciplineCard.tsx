@@ -16,15 +16,86 @@ interface LargeDisciplineCardProps {
   summary?: Partial<Course> | null;
   // Clique habilitado apenas quando synced
   onClick?: () => void;
+  // Se é equivalente (esconde coração)
+  isEquivalent?: boolean;
+  // Se deve mostrar botão de marcar como cursada
+  showCompletedButton?: boolean;
+  // Callback para ação restrita (bloqueio)
+  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course, mainCode?: string) => void;
+  // Dados do curso para verificar bloqueio
+  courseData?: Course | null;
+  // Código da disciplina principal (para equivalentes)
+  mainCode?: string;
+  // Pré-requisitos da equivalente
+  equivPrerequisites?: any[];
 }
 
-export function LargeDisciplineCard({ code, synced = false, name, summary, onClick }: LargeDisciplineCardProps) {
+export function LargeDisciplineCard({ 
+  code, 
+  synced = false, 
+  name, 
+  summary, 
+  onClick, 
+  isEquivalent = false,
+  showCompletedButton = true,
+  onRestrictedAction,
+  courseData,
+  mainCode,
+  equivPrerequisites
+}: LargeDisciplineCardProps) {
   const { completedDisciplines, toggleCompletedDiscipline } = useApp();
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
 
   const isCompleted = completedDisciplines.includes(code);
   const favorite = isFavorite(code);
   const sectionsCount = (summary as any)?.sections_count ?? 0;
+
+  // Disciplinas não sincronizadas nunca devem mostrar botão de marcar como cursada
+  const shouldShowCompletedButton = synced && showCompletedButton;
+
+  // Verificar se equivalente tem pré-requisitos bloqueados
+  const hasEquivPrereqs = equivPrerequisites && equivPrerequisites.length > 0;
+  const hasEquivPrereqsDone = hasEquivPrereqs ? equivPrerequisites.some((option: any[]) => {
+    if (!option || option.length === 0) return false;
+    return option.every((prereq: any) => completedDisciplines.includes(prereq.code || prereq));
+  }) : true; // Se não tem pré-requisitos, considera como disponível (não bloqueado)
+
+  const handleCompletedClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    // Se já está cursada, permite desmarcar diretamente sem verificar bloqueio
+    if (isCompleted) {
+      if (isEquivalent && mainCode) {
+        toggleCompletedDiscipline(code);
+        toggleCompletedDiscipline(mainCode);
+      } else {
+        toggleCompletedDiscipline(code);
+      }
+      return;
+    }
+    
+    // Se for equivalente com pré-requisitos bloqueados, chama onRestrictedAction com dados da equivalente
+    if (isEquivalent && hasEquivPrereqs && !hasEquivPrereqsDone) {
+      if (onRestrictedAction && courseData) {
+        onRestrictedAction('completed', courseData, mainCode);
+        return;
+      }
+      return;
+    }
+    
+    // Se for equivalente e tiver código principal, marca ambos
+    if (isEquivalent && mainCode) {
+      toggleCompletedDiscipline(code);
+      toggleCompletedDiscipline(mainCode);
+      return;
+    }
+    
+    if (onRestrictedAction && courseData) {
+      onRestrictedAction('completed', courseData);
+    } else {
+      toggleCompletedDiscipline(code);
+    }
+  };
 
   if (!synced) {
     return (
@@ -36,23 +107,22 @@ export function LargeDisciplineCard({ code, synced = false, name, summary, onCli
       >
         <div className="flex items-center justify-between">
           <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground">{code}</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleCompletedDiscipline(code);
-            }}
-            className={cn(
-              'p-2 rounded-lg transition-colors',
-              isCompleted ? 'text-success bg-success/10' : 'text-muted-foreground hover:bg-muted',
-            )}
-            aria-label={isCompleted ? 'Desmarcar como cursada' : 'Marcar como cursada'}
-          >
-            {isCompleted ? (
-              <Check className="w-4 h-4" />
-            ) : (
-              <span className="block w-4 h-4 rounded-full border border-current" />
-            )}
-          </button>
+          {shouldShowCompletedButton && (
+            <button
+              onClick={handleCompletedClick}
+              className={cn(
+                'p-2 rounded-lg transition-colors',
+                isCompleted ? 'text-success bg-success/10' : 'text-muted-foreground hover:bg-muted',
+              )}
+              aria-label={isCompleted ? 'Desmarcar como cursada' : 'Marcar como cursada'}
+            >
+              {isCompleted ? (
+                <Check className="w-4 h-4" />
+              ) : (
+                <span className="block w-4 h-4 rounded-full border border-current" />
+              )}
+            </button>
+          )}
         </div>
 
         <h3 className="font-semibold text-card-foreground text-sm">Não Disponível</h3>
@@ -73,17 +143,16 @@ export function LargeDisciplineCard({ code, synced = false, name, summary, onCli
       <div className="flex items-center justify-between mb-1">
         <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground">{code}</span>
         <div className="flex items-center gap-1">
-          <FavoriteButton active={favorite} onToggle={() => toggleFavorite(code)} />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleCompletedDiscipline(code);
-            }}
-            className={cn('p-2 rounded-lg transition-colors', isCompleted ? 'text-success bg-success/10' : 'text-muted-foreground hover:bg-muted')}
-            aria-label={isCompleted ? 'Desmarcar como cursada' : 'Marcar como cursada'}
-          >
-            {isCompleted ? <Check className="w-4 h-4" /> : <span className="block w-4 h-4 rounded-full border border-current" />}
-          </button>
+          {!isEquivalent && <FavoriteButton active={favorite} onToggle={() => toggleFavorite(code)} />}
+          {shouldShowCompletedButton && (
+            <button
+              onClick={handleCompletedClick}
+              className={cn('p-2 rounded-lg transition-colors', isCompleted ? 'text-success bg-success/10' : 'text-muted-foreground hover:bg-muted')}
+              aria-label={isCompleted ? 'Desmarcar como cursada' : 'Marcar como cursada'}
+            >
+              {isCompleted ? <Check className="w-4 h-4" /> : <span className="block w-4 h-4 rounded-full border border-current" />}
+            </button>
+          )}
         </div>
       </div>
 

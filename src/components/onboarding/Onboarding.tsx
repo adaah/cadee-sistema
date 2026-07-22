@@ -300,18 +300,16 @@ export function Onboarding() {
             animate={{ y: 0, opacity: 1 }}
             className="flex items-center gap-3 mb-4 sm:mb-5 px-1"
           >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow flex items-center justify-center flex-shrink-0">
-            <GraduationCap className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div className="leading-tight">
-            <h1 className="text-lg font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
-              CADEE
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              Catálogo Auxiliar de Disciplinas e Estruturação de Estudos
-            </p>
-          </div>
-        </motion.div>
+            <img src="/logo.png" alt="CADEE Logo" className="w-10 h-10 rounded-xl" />
+            <div className="leading-tight">
+              <h1 className="text-lg font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                CADEE
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Catálogo Auxiliar de Disciplinas e Estruturação de Estudos
+              </p>
+            </div>
+          </motion.div>
 
         {/* Card */}
         <motion.div 
