@@ -6,7 +6,8 @@ import { useMyCourses } from '@/hooks/useMyCourses';
 import { ScheduleSummary } from '@/components/planner/ScheduleSummary';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
-import { Calendar, BookOpen, BarChart3, X, Sparkles, GraduationCap, Clock, AlertTriangle, Plus } from 'lucide-react';
+import { useOverallProgress } from '@/hooks/useOverallProgress';
+import { Calendar, BookOpen, BarChart3, X, Sparkles, GraduationCap, Clock, AlertTriangle, Plus, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ProgressView } from '@/components/progress/ProgressView';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -19,6 +20,7 @@ const Index = () => {
   const { courses } = useMyCourses();
   const { currentTerm } = useCurrentTerm();
   const { pendingTransition, planningTerm, canAdvance, advanceToNewSemester, unresolvedCodes } = useSemesterTransition();
+  const overallProgress = useOverallProgress();
   const [activeTab, setActiveTab] = useState<'schedule' | 'progress'>('schedule');
   const { setMode, isFull, isSimplified } = useMode();
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
@@ -171,7 +173,7 @@ const Index = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+            <div className={`grid gap-3 sm:gap-4 mb-6 ${isFull && hasImportedHistory ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
               <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   <BookOpen className="w-4 h-4 shrink-0" />
@@ -204,6 +206,78 @@ const Index = () => {
                   )}
                 </div>
               </div>
+
+              {isFull && hasImportedHistory && (
+                <div className="bg-card rounded-xl border border-border p-3 sm:p-4 col-span-2 sm:col-span-1">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-2">
+                    <TrendingUp className="w-4 h-4 shrink-0" />
+                    <span className="text-xs">Prévia da progressão</span>
+                  </div>
+                  
+                  {/* Progresso Geral */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">Geral</span>
+                      <span className="text-xs font-semibold text-card-foreground">{overallProgress.projected.overallProgress.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-green-500 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(overallProgress.projected.overallProgress, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      {overallProgress.projected.totalHours}h / {overallProgress.totalRequiredHours}h
+                    </p>
+                  </div>
+
+                  {/* Obrigatórias */}
+                  <div className="mb-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">Obrigatórias</span>
+                      <span className="text-xs font-semibold text-card-foreground">
+                        {overallProgress.projected.mandatory.total > 0 
+                          ? ((overallProgress.projected.mandatory.completed / overallProgress.projected.mandatory.total) * 100).toFixed(1) 
+                          : 0}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(overallProgress.projected.mandatory.total > 0 
+                          ? (overallProgress.projected.mandatory.completed / overallProgress.projected.mandatory.total) * 100 
+                          : 0, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      {overallProgress.projected.mandatory.completed}h / {overallProgress.projected.mandatory.total}h
+                    </p>
+                  </div>
+
+                  {/* Optativas */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] sm:text-xs text-muted-foreground">Optativas</span>
+                      <span className="text-xs font-semibold text-card-foreground">
+                        {overallProgress.projected.electives.total > 0 
+                          ? ((overallProgress.projected.electives.completed / overallProgress.projected.electives.total) * 100).toFixed(1) 
+                          : 0}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(overallProgress.projected.electives.total > 0 
+                          ? (overallProgress.projected.electives.completed / overallProgress.projected.electives.total) * 100 
+                          : 0, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      {overallProgress.projected.electives.completed}h / {overallProgress.projected.electives.total}h
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {scheduledCount === 0 ? (

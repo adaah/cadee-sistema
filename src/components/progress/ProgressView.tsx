@@ -32,6 +32,7 @@ export function ProgressView() {
   const [disciplinesBySemester, setDisciplinesBySemester] = useState<Map<string, SemesterDisciplineData>>(new Map());
   const [importError, setImportError] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
+  const [courseLevelsLoaded, setCourseLevelsLoaded] = useState(false);
   
   // Estado para dados do programa
   const [programDetail, setProgramDetail] = useState<ProgramDetail | null>(null);
@@ -59,11 +60,12 @@ export function ProgressView() {
 
   // Carregar níveis do curso quando as disciplinas carregarem
   useEffect(() => {
-    if (courses && courses.length > 0) {
+    if (courses && courses.length > 0 && !coursesLoading && !courseLevelsLoaded) {
       const levels = extractCourseLevels(courses);
       setCourseLevels(levels);
+      setCourseLevelsLoaded(true);
     }
-  }, [courses]);
+  }, [courses, coursesLoading, courseLevelsLoaded]);
 
   // Carregar dados salvos do localStorage ao iniciar
   useEffect(() => {
@@ -81,8 +83,8 @@ export function ProgressView() {
     }
   }, []);
 
-  // Salvar dados no localStorage sempre que forem atualizados
-  useEffect(() => {
+  // Função para salvar dados no localStorage
+  const saveToLocalStorage = () => {
     const dataToSave = {
       codes: parsedCodes,
       semesters: Array.from(parsedSemesters.entries()),
@@ -90,7 +92,9 @@ export function ProgressView() {
       disciplinesBySemester: Array.from(disciplinesBySemester.entries())
     };
     localStorage.setItem('progressData', JSON.stringify(dataToSave));
-  }, [parsedCodes, parsedSemesters, parsedWorkload, disciplinesBySemester]);
+    // Disparar evento customizado para notificar mudanças na mesma aba
+    window.dispatchEvent(new Event('progressDataUpdated'));
+  };
 
   // Função para limpar todos os dados salvos
   const clearSavedData = () => {
@@ -101,6 +105,8 @@ export function ProgressView() {
     setDisciplinesBySemester(new Map());
     setImportText('');
     setImportError('');
+    // Disparar evento customizado para notificar mudanças na mesma aba
+    window.dispatchEvent(new Event('progressDataUpdated'));
   };
 
   const handleParseImport = (text: string) => {
@@ -112,6 +118,9 @@ export function ProgressView() {
     setParsedWorkload(result.workload);
     setDisciplinesBySemester(result.disciplinesBySemester);
     setImportText(text);
+    
+    // Salvar após atualizar o estado
+    setTimeout(() => saveToLocalStorage(), 0);
     
     if (result.codes.length === 0 && !result.workload) {
       setImportError('Não foi possível encontrar disciplinas com status aprovado ou tabela de carga horária. Confira o texto ou tente outro arquivo.');
@@ -180,6 +189,9 @@ export function ProgressView() {
     
     // Mudar automaticamente para modo completo quando histórico é importado
     setMode('full');
+    
+    // Salvar dados no localStorage
+    saveToLocalStorage();
     
     setShowImportModal(false);
     // Não limpar os dados parseados para que possam ser usados nas métricas

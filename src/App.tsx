@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -29,44 +30,33 @@ function AppContent() {
   const { isOnboarded } = useApp();
   const { selectedPrograms } = useMyPrograms();
 
-  // Check if a course has been selected
-  const hasSelectedCourse = useMemo(() => {
-    try {
-      const selectedPrograms = localStorage.getItem('selectedPrograms');
-      const programs = selectedPrograms ? JSON.parse(selectedPrograms) : [];
-      return Array.isArray(programs) && programs.length > 0;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  if (!isOnboarded) {
-    return <Onboarding />;
-  }
-
   const hasCourseSelected = selectedPrograms.length > 0;
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route 
-          path="/" 
-          element={hasCourseSelected ? <Index /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/disciplinas" 
-          element={hasCourseSelected ? <Disciplinas /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/planejador" 
-          element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/configuracoes" 
-          element={hasCourseSelected ? <Configuracoes /> : <NoCourseSelected />} 
-        />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      {!isOnboarded ? (
+        <Onboarding />
+      ) : (
+        <Routes>
+          <Route 
+            path="/" 
+            element={hasCourseSelected ? <Index /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/disciplinas" 
+            element={hasCourseSelected ? <Disciplinas /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/planejador" 
+            element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/configuracoes" 
+            element={hasCourseSelected ? <Configuracoes /> : <NoCourseSelected />} 
+          />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      )}
     </BrowserRouter>
   );
 }
