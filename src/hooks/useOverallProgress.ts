@@ -59,10 +59,6 @@ export function useOverallProgress(): OverallProgressData {
     const coursesByCode = new Map(courses.map((c) => [c.code, c]));
     const plannedCodes = new Set<string>();
 
-    console.log('[useOverallProgress] Calculating plannedWorkload');
-    console.log('[useOverallProgress] mySections count:', mySections.length);
-    console.log('[useOverallProgress] courses count:', courses.length);
-
     mySections.forEach((section) => {
       const code = section.course?.code || (section as { course_code?: string }).course_code;
       if (code && !plannedCodes.has(code)) {
@@ -72,7 +68,6 @@ export function useOverallProgress(): OverallProgressData {
           const courseWorkload = getCourseWorkload(course as any);
           const courseType = (course as any).type;
           const category = getWorkloadCategory(typeof courseType === 'string' ? courseType : undefined);
-          console.log('[useOverallProgress] Section:', code, 'workload:', courseWorkload, 'category:', category);
           if (category === 'mandatory') workload.mandatory += courseWorkload;
           else if (category === 'elective') workload.elective += courseWorkload;
           else if (category === 'complementary') workload.complementary += courseWorkload;
@@ -80,7 +75,6 @@ export function useOverallProgress(): OverallProgressData {
       }
     });
 
-    console.log('[useOverallProgress] Final plannedWorkload:', workload);
     return workload;
   }, [mySections, courses]);
 
@@ -117,8 +111,14 @@ export function useOverallProgress(): OverallProgressData {
       return { mandatory: 0, elective: 0, complementary: 0 };
     }
 
-    // Usar os dados do programa se disponíveis, caso contrário usar 0
-    const programCourses = (program as any).courses || [];
+    // Usar os dados do programa se disponíveis, caso contrário usar os cursos do useMyCourses
+    let programCourses = (program as any).courses || [];
+    
+    // Se o programa não tiver cursos, usar os cursos do useMyCourses
+    if (programCourses.length === 0 && courses.length > 0) {
+      programCourses = courses;
+    }
+    
     const byCategory = sumWorkloadByCategory(programCourses);
     
     return {
@@ -126,17 +126,13 @@ export function useOverallProgress(): OverallProgressData {
       elective: byCategory.elective,
       complementary: byCategory.complementary,
     };
-  }, [selectedPrograms, programs]);
+  }, [selectedPrograms, programs, courses]);
 
   const progressData = useMemo(() => {
     // Verificar se há histórico importado
     const savedData = localStorage.getItem('progressData');
-    console.log('[useOverallProgress] savedData:', savedData ? 'exists' : 'null');
-    console.log('[useOverallProgress] curriculumRequirements:', curriculumRequirements);
-    console.log('[useOverallProgress] manualWorkloadBonus:', manualWorkloadBonus);
     
     if (!savedData) {
-      console.log('[useOverallProgress] No saved data, returning zeros');
       return {
         totalHours: 0,
         mandatory: { completed: 0, total: curriculumRequirements.mandatory },
@@ -152,21 +148,19 @@ export function useOverallProgress(): OverallProgressData {
       const parsedSemesters = parsedData.semesters as Map<string, any> | null;
 
       console.log('[useOverallProgress] parsedWorkload:', parsedWorkload);
-      console.log('[useOverallProgress] parsedSemesters:', parsedSemesters);
 
-      const mandatoryTotal = curriculumRequirements.mandatory;
-      const electivesTotal = curriculumRequirements.elective;
-      const complementaryTotal = curriculumRequirements.complementary;
+      // Usar os requisitos do histórico importado se disponíveis, caso contrário usar curriculumRequirements
+      const mandatoryTotal = parsedWorkload?.mandatory.required ?? curriculumRequirements.mandatory;
+      const electivesTotal = parsedWorkload?.elective.required ?? curriculumRequirements.elective;
+      const complementaryTotal = parsedWorkload?.complementary.required ?? curriculumRequirements.complementary;
 
-      const mandatoryCompleted =
-        (parsedWorkload?.mandatory.completed ?? 0) + manualWorkloadBonus.mandatory;
-      const electivesCompleted =
-        (parsedWorkload?.elective.completed ?? 0) + manualWorkloadBonus.elective;
-      const complementaryCompleted =
-        (parsedWorkload?.complementary.completed ?? 0) + manualWorkloadBonus.complementary;
+      // O histórico importado já tem as horas completadas, não somar manualWorkloadBonus
+      const mandatoryCompleted = parsedWorkload?.mandatory.completed ?? 0;
+      const electivesCompleted = parsedWorkload?.elective.completed ?? 0;
+      const complementaryCompleted = parsedWorkload?.complementary.completed ?? 0;
       const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
 
-      console.log('[useOverallProgress] Calculated progress:', {
+      console.log('[useOverallProgress] progressData:', {
         mandatoryCompleted,
         electivesCompleted,
         complementaryCompleted,
@@ -183,8 +177,7 @@ export function useOverallProgress(): OverallProgressData {
         complementary: { completed: complementaryCompleted, total: complementaryTotal },
         totalSemesters: parsedSemesters?.size || 0,
       };
-    } catch (error) {
-      console.error('[useOverallProgress] Error parsing saved data:', error);
+    } catch {
       return {
         totalHours: 0,
         mandatory: { completed: 0, total: curriculumRequirements.mandatory },
