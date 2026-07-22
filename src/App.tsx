@@ -11,6 +11,8 @@ import Disciplinas from "./pages/Disciplinas";
 import Planejador from "./pages/Planejador";
 import Configuracoes from "./pages/Configuracoes";
 import NotFound from "./pages/NotFound";
+import NoCourseSelected from "./pages/NoCourseSelected";
+import { useMemo } from "react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,8 +28,23 @@ const queryClient = new QueryClient({
 function AppContent() {
   const { isOnboarded } = useApp();
 
+  // Check if a course has been selected
+  const hasSelectedCourse = useMemo(() => {
+    try {
+      const selectedPrograms = localStorage.getItem('selectedPrograms');
+      const programs = selectedPrograms ? JSON.parse(selectedPrograms) : [];
+      return Array.isArray(programs) && programs.length > 0;
+    } catch {
+      return false;
+    }
+  }, []);
+
   if (!isOnboarded) {
     return <Onboarding />;
+  }
+
+  if (!hasSelectedCourse) {
+    return <NoCourseSelected />;
   }
 
   return (
