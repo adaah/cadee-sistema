@@ -1,6 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { Calendar, AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 interface NewSemesterModalProps {
   open: boolean;
@@ -9,6 +8,7 @@ interface NewSemesterModalProps {
   unresolvedCodes: string[];
   canAdvance: boolean;
   onAdvance: () => void;
+  onResolveOnHome: () => void;
 }
 
 export function NewSemesterModal({
@@ -18,6 +18,7 @@ export function NewSemesterModal({
   unresolvedCodes,
   canAdvance,
   onAdvance,
+  onResolveOnHome,
 }: NewSemesterModalProps) {
   return (
     <AnimatePresence>
@@ -41,9 +42,20 @@ export function NewSemesterModal({
                 <Calendar className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-lg font-semibold text-foreground">Novo semestre disponível</p>
+                <p className="text-lg font-semibold text-foreground">
+                  {canAdvance ? 'Pronto para o novo semestre' : 'Novo semestre disponível'}
+                </p>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  O semestre letivo mudou de <strong>{planningTerm}</strong> para <strong>{currentTerm}</strong>.
+                  {canAdvance ? (
+                    <>
+                      Todas as disciplinas do semestre <strong>{planningTerm}</strong> foram finalizadas.
+                      Avance para o semestre <strong>{currentTerm}</strong>.
+                    </>
+                  ) : (
+                    <>
+                      O semestre letivo mudou de <strong>{planningTerm}</strong> para <strong>{currentTerm}</strong>.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -88,13 +100,14 @@ export function NewSemesterModal({
 
             <div className="flex flex-col sm:flex-row gap-2 justify-end">
               {!canAdvance && (
-                <Link
-                  to="/"
+                <button
+                  type="button"
+                  onClick={onResolveOnHome}
                   className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-border text-sm text-foreground hover:bg-muted"
                 >
                   Resolver na tela inicial
                   <ArrowRight className="w-4 h-4" />
-                </Link>
+                </button>
               )}
               <button
                 onClick={onAdvance}

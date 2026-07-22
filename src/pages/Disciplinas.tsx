@@ -49,6 +49,8 @@ const Disciplinas = () => {
   const [importError, setImportError] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
   const [prereqCache, setPrereqCache] = useState<Map<string, string[][]>>(new Map());
+  const [isPrereqsLoading, setIsPrereqsLoading] = useState(false);
+  const [showLoadComplete, setShowLoadComplete] = useState(false);
 
   useEffect(() => {
     const hasVisited = localStorage.getItem('firstVisitDisciplinas');
@@ -265,6 +267,7 @@ const Disciplinas = () => {
       .map((c) => ({ code: c.code, url: (c as any).detail_url }));
     if (missing.length === 0) return;
 
+    setIsPrereqsLoading(true);
     (async () => {
       const updates = new Map(prereqCache);
       for (const item of missing) {
@@ -305,6 +308,9 @@ const Disciplinas = () => {
         }
       }
       setPrereqCache(updates);
+      setIsPrereqsLoading(false);
+      setShowLoadComplete(true);
+      setTimeout(() => setShowLoadComplete(false), 2000);
     })();
   }, [courses, prereqCache]);
 
@@ -686,6 +692,22 @@ const Disciplinas = () => {
               <div className="w-4 h-4 rounded bg-muted" />
               <span className="text-sm text-muted-foreground">Bloqueada</span>
             </div>
+          </div>
+        )}
+
+        {(isPrereqsLoading || showLoadComplete) && (
+          <div className="fixed top-20 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-card border border-border rounded-lg shadow-lg">
+            {isPrereqsLoading ? (
+              <>
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-muted-foreground">Carregando pré-requisitos...</span>
+              </>
+            ) : (
+              <>
+                <div className="w-4 h-4 rounded-full bg-success" />
+                <span className="text-sm text-success font-medium">Carregamento completo</span>
+              </>
+            )}
           </div>
         )}
 
