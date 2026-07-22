@@ -2,6 +2,9 @@
 
 Sistema web para planejamento e gerenciamento de grade curricular, desenvolvido para estudantes universitários da UFBA. O sistema permite visualizar disciplinas, planejar horários, acompanhar progresso acadêmico e importar histórico escolar.
 
+Desenvolvido por Matheus Freitas (FormigTeen) e Eduarda Almeida (adaah)
+Orientador: Prof. Dr. Rodrigo Rocha Gomes e Souza (rodrigorgs)
+
 ## 🚀 Tecnologias
 
 ### Frontend
