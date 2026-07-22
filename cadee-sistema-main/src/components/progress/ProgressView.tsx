@@ -854,7 +854,7 @@ export function ProgressView() {
                   className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
                   disabled={isParsing}
                 >
-                  Aplicar e calcular progresso
+                  Aplicar
                 </button>
               </div>
             </motion.div>

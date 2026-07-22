@@ -52,33 +52,44 @@ export function extractApprovedCodes(text: string): string[] {
 
 // Função para extrair carga horária da tabela do histórico
 export function extractWorkloadFromHistory(text: string): WorkloadData | null {
-  // Procura pela seção de carga horária e captura todo o conteúdo seguinte
-  const workloadMatch = text.match(/Carga\s+Horária[\s\S]*/i);
+  // Procura pela seção de carga horária com regex mais flexível
+  // Procura por "Integralizado Pendente Exigido" e captura até encontrar "Legenda"
+  const workloadMatch = text.match(/Integralizado\s+Pendente\s+Exigido[\s\S]*?Legenda/i);
   if (!workloadMatch) return null;
   
   const workloadText = workloadMatch[0];
   
-  // Procura por todos os números seguidos de "h" no texto
+  // Extrai todos os números seguidos de "h" no texto
   const numbers = workloadText.match(/(\d+)\s*h/gi);
   
-  if (!numbers || numbers.length < 9) return null;
+  if (!numbers || numbers.length < 12) return null;
   
   // Extrai apenas os números
   const values = numbers.map(n => parseInt(n.replace(/\s*h/i, '')));
   
-  // Interpretação baseada no padrão identificado:
-  // Ordem dos valores: [Total Exigido, Optativas Exigido, Complementares Exigido, Complementares Integralizado, Optativas Pendente, Optativas Integralizado1, Optativas Integralizado2, Obrigatórias Integralizado, Obrigatórias Pendente]
+  // Ordem correta baseada na estrutura do PDF:
+  // Linha 1: Integralizado Pendente Exigido -> [2885, 1830, 1055] (Exigido, Integralizado, Pendente)
+  // Linha 2: Carga Horária e Créditos Integralizados/Pendentes
+  // Linha 3: Total Complementares Optativos Obrigatórias
+  // Linha 4: Valores -> [2295, 390, 200, 0, 200, 360, 30, 1470, 825]
+  //   - Obrigatorias exigido: 2295 (values[3])
+  //   - Optativos exigido: 390 (values[4])
+  //   - Complementares exigido: 200 (values[5])
+  //   - Complementares integralizado: 0 (values[6])
+  //   - Optativos integralizado: 360 (values[8])
+  //   - Optativos pendentes: 30 (values[9])
+  //   - Obrigatorios integralizados: 1470 (values[10])
+  //   - Obrigatorios pendentes: 825 (values[11])
   
-  const mandatoryCompleted = values[7];
-  const mandatoryRequired = values[0];
-  
-  // Para optativas, usa o menor entre os valores middle (posições 5 e 6)
-  const electiveCompleted = Math.min(values[5], values[6]);
-  const electiveRequired = values[1];
-  
-  // Se o menor valor foi usado para optativas, complementares é 0, senão usa o valor 3
-  const complementaryCompleted = values[5] === electiveCompleted ? 0 : values[3];
-  const complementaryRequired = values[2];
+  const mandatoryRequired = values[3];  // 2295
+  const electiveRequired = values[4];   // 390
+  const complementaryRequired = values[5]; // 200
+  const complementaryCompleted = values[6]; // 0
+  // values[7] parece ser um valor duplicado/extra, ignorar
+  const electiveCompleted = values[8]; // 360
+  const electivePending = values[9];   // 30
+  const mandatoryCompleted = values[10]; // 1470
+  const mandatoryPending = values[11];   // 825
   
   const totalCompleted = mandatoryCompleted + electiveCompleted + complementaryCompleted;
   const totalRequired = mandatoryRequired + electiveRequired + complementaryRequired;
@@ -88,12 +99,12 @@ export function extractWorkloadFromHistory(text: string): WorkloadData | null {
     mandatory: {
       required: mandatoryRequired,
       completed: mandatoryCompleted,
-      pending: mandatoryRequired - mandatoryCompleted
+      pending: mandatoryPending
     },
     elective: {
       required: electiveRequired,
       completed: electiveCompleted,
-      pending: electiveRequired - electiveCompleted
+      pending: electivePending
     },
     complementary: {
       required: complementaryRequired,

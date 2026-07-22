@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, AlertCircle, X, BookOpen, Upload, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, AlertCircle, X, BookOpen, Upload, ChevronLeft, ChevronRight, ChevronDown, Shield } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { reduce, append } from 'ramda'
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -262,11 +262,12 @@ const Disciplinas = () => {
       setImportError('Nenhum código aprovado encontrado para aplicar.');
       return;
     }
+    
+    // Mudar automaticamente para modo completo quando histórico é importado
     if (isSimplified) {
-      setPendingAction({ type: 'import', codes: parsedCodes });
-      setShowUpgradeModal(true);
-      return;
+      setMode('full');
     }
+    
     applyImportedCodes(parsedCodes);
     setShowImportModal(false);
   };
@@ -958,12 +959,13 @@ const Disciplinas = () => {
                     <input type="file" accept=".pdf,text/plain" className="hidden" onChange={handleFileChange} />
                   </label>
 
-                  <textarea
-                    className="w-full min-h-[140px] rounded-lg border border-border bg-background p-3 text-sm"
-                    placeholder="Cole aqui o texto do histórico (Ctrl+A, Ctrl+C no PDF aberto)"
-                    value={importText}
-                    onChange={(e) => handleParseImport(e.target.value)}
-                  />
+                  <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                    <p className="font-medium text-foreground mb-1 flex items-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      Privacidade
+                    </p>
+                    <p>Seu histórico não é armazenado em nenhum local. É utilizado apenas para extração de texto sobre as disciplinas e progresso, sendo automaticamente descartado após a extração.</p>
+                  </div>
 
                   {isParsing && <p className="text-sm text-muted-foreground">Lendo PDF...</p>}
                   {importError && <p className="text-sm text-destructive">{importError}</p>}
