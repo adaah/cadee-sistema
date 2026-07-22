@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Check, GraduationCap, Search, Loader2, MapPin, ChevronDown, Filter, X, School, BookOpen, Sun, Sunset, Moon, Clock } from 'lucide-react';
 import { AnimatePresence, motion, AnimatePresence as MotionPresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/contexts/AppContext';
 import { usePrograms } from '@/hooks/useApi';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
@@ -196,6 +197,7 @@ function ModeFilter({ modes, selectedMode, onSelect }) {
 }
 
 export function Onboarding() {
+  const navigate = useNavigate();
   const { setIsOnboarded } = useApp();
   const { selectedPrograms, setSelectedPrograms } = useMyPrograms();
   const { data: programs = [], isLoading, error } = usePrograms();
@@ -269,23 +271,30 @@ export function Onboarding() {
     localStorage.setItem('mode', mode === 'simplificada' ? 'simplified' : 'full');
     setIsOnboarded(true);
     setShowExperienceModal(false);
-    // Redirecionar conforme a escolha
-    if (mode === 'simplificada') {
-      window.location.href = '/planejador';
-    } else {
-      window.location.href = '/';
-    }
+    
+    // Redirecionar após o estado ser atualizado
+    setTimeout(() => {
+      if (mode === 'simplificada') {
+        navigate('/planejador');
+      } else {
+        navigate('/');
+      }
+    }, 100);
   };
 
   const handleSubmit = () => {
     if (!selectedId) return;
     setSelectedPrograms([selectedId]);
-    if (experienceMode) {
-      finalizeExperience(experienceMode);
-    } else {
-      setModalExperienceMode(null);
-      setShowExperienceModal(true);
-    }
+    
+    // Pequeno delay para garantir que o estado foi atualizado antes de finalizar
+    setTimeout(() => {
+      if (experienceMode) {
+        finalizeExperience(experienceMode);
+      } else {
+        setModalExperienceMode(null);
+        setShowExperienceModal(true);
+      }
+    }, 50);
   };
   
   const selectedProgram = programs.find((p: any) => p.id_ref === selectedId);

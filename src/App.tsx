@@ -5,12 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AppProvider, useApp } from "./contexts/AppContext";
+import { useMyPrograms } from "./hooks/useMyPrograms";
 import { Onboarding } from "./components/onboarding/Onboarding";
 import Index from "./pages/Index";
 import Disciplinas from "./pages/Disciplinas";
 import Planejador from "./pages/Planejador";
 import Configuracoes from "./pages/Configuracoes";
 import NotFound from "./pages/NotFound";
+import NoCourseSelected from "./pages/NoCourseSelected";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,18 +27,33 @@ const queryClient = new QueryClient({
 
 function AppContent() {
   const { isOnboarded } = useApp();
+  const { selectedPrograms } = useMyPrograms();
 
   if (!isOnboarded) {
     return <Onboarding />;
   }
 
+  const hasSelectedCourse = selectedPrograms.length > 0;
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/disciplinas" element={<Disciplinas />} />
-        <Route path="/planejador" element={<Planejador />} />
-        <Route path="/configuracoes" element={<Configuracoes />} />
+        <Route 
+          path="/" 
+          element={hasSelectedCourse ? <Index /> : <NoCourseSelected />} 
+        />
+        <Route 
+          path="/disciplinas" 
+          element={hasSelectedCourse ? <Disciplinas /> : <NoCourseSelected />} 
+        />
+        <Route 
+          path="/planejador" 
+          element={hasSelectedCourse ? <Planejador /> : <NoCourseSelected />} 
+        />
+        <Route 
+          path="/configuracoes" 
+          element={hasSelectedCourse ? <Configuracoes /> : <NoCourseSelected />} 
+        />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
