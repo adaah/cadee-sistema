@@ -9,6 +9,8 @@ export interface WorkloadData {
 // Interface para dados de disciplinas por semestre
 export interface SemesterDisciplineData {
   approved: string[];
+  failed: string[];
+  dropped: string[];
   total: string[];
 }
 
@@ -131,7 +133,8 @@ export function extractDisciplinesBySemester(text: string): Map<string, Semester
     
     // Verifica o status das disciplinas neste período
     const approved: string[] = [];
-    const rejected: string[] = [];
+    const failed: string[] = [];
+    const dropped: string[] = [];
     const others: string[] = [];
     
     codes.forEach(code => {
@@ -148,7 +151,11 @@ export function extractDisciplinesBySemester(text: string): Map<string, Semester
       if (isApproved) {
         approved.push(code);
       } else if (isRejected) {
-        rejected.push(code);
+        if (textAfterCode.includes('TRANC') || textAfterCode.includes('CANC')) {
+          dropped.push(code);
+        } else {
+          failed.push(code);
+        }
       } else {
         others.push(code);
       }
@@ -157,6 +164,8 @@ export function extractDisciplinesBySemester(text: string): Map<string, Semester
     // Armazena os dados do período
     semesterData.set(period, {
       approved: approved,
+      failed: failed,
+      dropped: dropped,
       total: codes
     });
   }
@@ -165,9 +174,14 @@ export function extractDisciplinesBySemester(text: string): Map<string, Semester
 }
 
 // Função específica para parsear o formato real do histórico UFBA
-export function parseUFBAHistory(text: string): { codes: string[], semesters: Map<string, { approved: number, failed: number, dropped: number, notDone: number }> } {
+export function parseUFBAHistory(text: string): { 
+  codes: string[], 
+  semesters: Map<string, { approved: number, failed: number, dropped: number, notDone: number }>,
+  disciplinesBySemester: Map<string, SemesterDisciplineData>
+} {
   const approved = new Set<string>();
   const semesters = new Map<string, { approved: number, failed: number, dropped: number, notDone: number }>();
+  const disciplinesBySemester = new Map<string, SemesterDisciplineData>();
   
   // O texto está vindo como um bloco contínuo. Vamos procurar pelos padrões diretamente no texto.
   
@@ -212,37 +226,55 @@ export function parseUFBAHistory(text: string): { codes: string[], semesters: Ma
     
     if (!semesters.has(discipline.semester)) {
       semesters.set(discipline.semester, { approved: 0, failed: 0, dropped: 0, notDone: 0 });
+      disciplinesBySemester.set(discipline.semester, { approved: [], failed: [], dropped: [], total: [] });
     }
     
     const semesterData = semesters.get(discipline.semester)!;
+    const disciplineData = disciplinesBySemester.get(discipline.semester)!;
     
     if (discipline.status === 'APR' || discipline.status === 'CUMP' || discipline.status === 'DISP') {
       semesterData.approved++;
+      disciplineData.approved.push(discipline.code);
     } else if (discipline.status === 'TRANC') {
       semesterData.dropped++;
+      disciplineData.dropped.push(discipline.code);
     } else if (discipline.status === 'REP' || discipline.status === 'REPF' || discipline.status === 'REPMF') {
       semesterData.failed++;
+      disciplineData.failed.push(discipline.code);
     } else {
       // CANC e outros status são tratados como não feitas
       semesterData.notDone++;
     }
+    
+    disciplineData.total.push(discipline.code);
   });
   
   // Se não encontrou linhas no formato estruturado, tenta fallback
   if (semesters.size === 0) {
-    return parseHistoryText(text);
+    const fallbackResult = parseHistoryText(text);
+    return { 
+      codes: fallbackResult.codes, 
+      semesters: fallbackResult.semesters,
+      disciplinesBySemester: new Map()
+    };
   }
   
   return { 
     codes: Array.from(approved), 
-    semesters 
+    semesters,
+    disciplinesBySemester
   };
 }
 
 // Função principal para extrair disciplinas aprovadas (compatível com tela Disciplinas)
-export function parseHistoryText(text: string): { codes: string[], semesters: Map<string, { approved: number, failed: number, dropped: number, notDone: number }> } {
+export function parseHistoryText(text: string): { 
+  codes: string[], 
+  semesters: Map<string, { approved: number, failed: number, dropped: number, notDone: number }>,
+  disciplinesBySemester: Map<string, SemesterDisciplineData>
+} {
   const approved = new Set<string>();
   const semesters = new Map<string, { approved: number, failed: number, dropped: number, notDone: number }>();
+  const disciplinesBySemester = new Map<string, SemesterDisciplineData>();
   
   const codeRegex = /[A-Z]{3,}\d{2,}[A-Z]?/g;
   const approvedTokens = ['APR', 'CUMP', 'DISP'];
@@ -268,13 +300,9 @@ export function parseHistoryText(text: string): { codes: string[], semesters: Ma
     const hasRejected = rejectedTokens.some(token => fullBlock.includes(token));
     const hasApproved = approvedTokens.some(token => fullBlock.includes(token));
     
-    // Se tem aprovação e não tem rejeição, adiciona todos os códigos do bloco
-    if (hasApproved && !hasRejected) {
-      codes.forEach(c => approved.add(c));
-    }
-    
-    // Contabiliza dados do semestre
+    // Inicializa dados do semestre
     const semesterData = semesters.get(period) || { approved: 0, failed: 0, dropped: 0, notDone: 0 };
+    const disciplineData = disciplinesBySemester.get(period) || { approved: [], failed: [], dropped: [], total: [] };
     
     codes.forEach(code => {
       const codeIndex = fullBlock.indexOf(code);
@@ -284,19 +312,25 @@ export function parseHistoryText(text: string): { codes: string[], semesters: Ma
       
       if (approvedTokens.some(token => textAfterCode.includes(token))) {
         semesterData.approved++;
+        disciplineData.approved.push(code);
         approved.add(code);
       } else if (rejectedTokens.some(token => textAfterCode.includes(token))) {
         if (textAfterCode.includes('TRANC') || textAfterCode.includes('CANC')) {
           semesterData.dropped++;
+          disciplineData.dropped.push(code);
         } else {
           semesterData.failed++;
+          disciplineData.failed.push(code);
         }
       } else {
         semesterData.notDone++;
       }
+      
+      disciplineData.total.push(code);
     });
     
     semesters.set(period, semesterData);
+    disciplinesBySemester.set(period, disciplineData);
   }
   
   // Processa blocos sem período claro (últimas disciplinas, quebras de página)
@@ -345,7 +379,8 @@ export function parseHistoryText(text: string): { codes: string[], semesters: Ma
   
   return { 
     codes: Array.from(approved), 
-    semesters 
+    semesters,
+    disciplinesBySemester
   };
 }
 
@@ -362,7 +397,12 @@ export function parseCompleteHistory(text: string): {
   const approvedOnly = extractApprovedCodes(text);
   const mergedCodes = new Set<string>([...codesData.codes, ...approvedOnly]);
   const workload = extractWorkloadFromHistory(text);
-  const disciplinesBySemester = extractDisciplinesBySemester(text);
+  
+  // Usa disciplinesBySemester do parseUFBAHistory, se estiver vazio, tenta extractDisciplinesBySemester
+  let disciplinesBySemester = codesData.disciplinesBySemester;
+  if (disciplinesBySemester.size === 0) {
+    disciplinesBySemester = extractDisciplinesBySemester(text);
+  }
   
   return {
     codes: Array.from(mergedCodes),

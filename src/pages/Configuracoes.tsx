@@ -3,27 +3,25 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { useApp } from '@/contexts/AppContext';
 import { useMySections } from '@/hooks/useMySections';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
-import { Sun, Moon, Trash2, RotateCcw, User, Download, Upload, Check, X, Layers } from 'lucide-react';
+import { Sun, Moon, Trash2, RotateCcw, User, Download, Upload, Check, X } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { useMode } from '@/hooks/useMode';
 
 const Configuracoes = () => {
-  const { 
-    theme, 
-    toggleTheme, 
+  const {
+    theme,
+    toggleTheme,
     setIsOnboarded,
     completedDisciplines,
     exportSettings,
     importSettings
   } = useApp();
   const { clearSections } = useMySections();
-  
+
   const { myPrograms, removeProgram } = useMyPrograms();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importSuccess, setImportSuccess] = useState(false);
 
   const hasPrograms = myPrograms.length > 0;
-  const { mode, setMode, isSimplified, isFull } = useMode();
 
   const handleResetAll = () => {
     if (confirm('Tem certeza que deseja resetar todos os dados? Esta ação não pode ser desfeita.')) {
@@ -45,13 +43,38 @@ const Configuracoes = () => {
     setIsOnboarded(false);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const data = exportSettings();
     const blob = new Blob([data], { type: 'application/json' });
+    const fileName = `cadee-configuracoes-${new Date().toISOString().split('T')[0]}.json`;
+    const file = new File([blob], fileName, { type: 'application/json' });
+
+    // Try to use Web Share API for mobile sharing
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: 'Configurações CADEE',
+          text: 'Minhas configurações do CADEE'
+        });
+        toast({
+          title: "Exportação concluída",
+          description: "Suas configurações foram compartilhadas."
+        });
+        return;
+      } catch (error) {
+        // User cancelled or share failed, fall back to download
+        if ((error as Error).name !== 'AbortError') {
+          console.error('Erro ao compartilhar:', error);
+        }
+      }
+    }
+
+    // Fallback to traditional download
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cadee-configuracoes-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -109,48 +132,6 @@ const Configuracoes = () => {
         </div>
 
         <div className="space-y-6">
-          {/* Mode */}
-          <div className="bg-card rounded-xl border border-border p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Layers className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-card-foreground">Modo de Uso</h3>
-                <p className="text-sm text-muted-foreground">Escolha como você quer usar o CADEE</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mb-3">
-              <button
-                onClick={() => setMode('simplified')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                  mode === 'simplified'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <span>Simplificado</span>
-              </button>
-              <button
-                onClick={() => setMode('full')}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                  mode === 'full'
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <span>Completo</span>
-              </button>
-            </div>
-
-            <p className="text-sm text-muted-foreground">
-              {isFull
-                ? 'Acompanhe seu curso por completo: registre cursadas, filtre por disponíveis, gerencie favoritos e monte sua grade com as turmas.'
-                : 'Modo enxuto para a matrícula no SIGAA: pesquise disciplinas e turmas, favorite o essencial e siga direto ao que importa (sem marcar cursadas ou usar filtros avançados).'}
-            </p>
-          </div>
-
           {/* Courses */}
           <div className="bg-card rounded-xl border border-border p-5">
             <div className="flex items-center gap-3 mb-4">
@@ -158,7 +139,7 @@ const Configuracoes = () => {
                 <User className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-card-foreground">Meus Cursos</h3>
+                <h3 className="font-semibold text-card-foreground">Meu curso</h3>
                 {!hasPrograms && (
                   <p className="text-sm text-muted-foreground">Nenhum curso adicionado</p>
                 )}
@@ -174,23 +155,20 @@ const Configuracoes = () => {
                     title={`${program.title} • ${program.location}`}
                   >
                     <span className="max-w-[220px] truncate">{program.title}</span>
-                    <button
-                      onClick={() => removeProgram(program.id_ref)}
-                      className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label={`Remover curso ${program.title}`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
                   </span>
                 ))}
               </div>
             )}
 
             <button
-              onClick={handleAddCourse}
+              onClick={() => {
+                if (confirm('Tem certeza que deseja mudar de curso? Todos os dados serão perdidos e as informações serão reiniciadas.')) {
+                  handleAddCourse();
+                }
+              }}
               className="w-full py-2.5 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
             >
-              Adicionar Curso
+              Mudar Curso
             </button>
           </div>
 
@@ -220,21 +198,6 @@ const Configuracoes = () => {
                 <Moon className="w-5 h-5" />
                 <span>Escuro</span>
               </button>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="font-semibold text-card-foreground mb-4">Estatísticas</h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Disciplinas cursadas</span>
-                <span className="font-medium text-card-foreground">{completedDisciplines.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Dados salvos localmente</span>
-                <span className="font-medium text-success">Ativo</span>
-              </div>
             </div>
           </div>
 
@@ -298,6 +261,26 @@ const Configuracoes = () => {
           <div className="text-center text-sm text-muted-foreground pt-4">
             <p>CADEE - Catálogo Auxiliar de Disciplinas e Estruturação de Estudos</p>
             <p className="mt-1">Desenvolvido com ❤️ para estudantes</p>
+            <p className="mt-1">
+              Desenvolvido por{' '}
+              <a
+                href="https://github.com/FormigTeen"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Matheus Freitas (FormigTeen)
+              </a>
+              {' '}e{' '}
+              <a
+                href="https://github.com/adaah"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Eduarda Almeida (adaah)
+              </a>
+            </p>
           </div>
         </div>
       </div>

@@ -611,7 +611,7 @@ export function Onboarding() {
                   />
                   <div className="text-sm">
                     <p className="font-semibold text-foreground">Versão completa</p>
-                    <p className="text-muted-foreground text-xs mt-0.5">Acesso a todos os recursos. Sempre pode mudar depois.</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">Acesso a todos os recursos. Seus dados ficam salvos apenas no seu navegador.</p>
                   </div>
                 </label>
               </div>

@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppSidebar } from './AppSidebar';
 import { MobileNav } from './MobileNav';
 import { MobileHeader } from './MobileHeader';
@@ -10,14 +11,21 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
+  const navigate = useNavigate();
   const {
-    pendingTransition,
+    showNewSemesterModal,
     planningTerm,
     currentTerm,
     unresolvedCodes,
     canAdvance,
     advanceToNewSemester,
+    dismissModalToResolve,
   } = useSemesterTransition();
+
+  const handleResolveOnHome = () => {
+    dismissModalToResolve();
+    navigate('/');
+  };
 
   return (
     <div className="flex min-h-screen w-full bg-background">
@@ -28,12 +36,13 @@ export function MainLayout({ children }: MainLayoutProps) {
       </main>
       <MobileNav />
       <NewSemesterModal
-        open={pendingTransition}
+        open={showNewSemesterModal}
         planningTerm={planningTerm}
         currentTerm={currentTerm}
         unresolvedCodes={unresolvedCodes}
         canAdvance={canAdvance}
         onAdvance={advanceToNewSemester}
+        onResolveOnHome={handleResolveOnHome}
       />
     </div>
   );

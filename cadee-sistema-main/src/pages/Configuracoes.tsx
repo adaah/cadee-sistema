@@ -158,7 +158,7 @@ const Configuracoes = () => {
                 <User className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h3 className="font-semibold text-card-foreground">Meus Cursos</h3>
+                <h3 className="font-semibold text-card-foreground">Meu Curso</h3>
                 {!hasPrograms && (
                   <p className="text-sm text-muted-foreground">Nenhum curso adicionado</p>
                 )}

@@ -6,7 +6,7 @@ import { useMyCourses } from '@/hooks/useMyCourses';
 import { useMySections } from '@/hooks/useMySections';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { fetchProgramDetail, type ProgramDetail } from '@/services/api';
-import { parseCompleteHistory, type WorkloadData } from '@/utils/historyParser';
+import { parseCompleteHistory, type WorkloadData, type SemesterDisciplineData } from '@/utils/historyParser';
 import { getCourseWorkload, getWorkloadCategory, mergeSemesterOutcomes, sumWorkloadByCategory } from '@/lib/semester';
 import { GraduationCap, BookOpen, Clock, Info, Upload, X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -28,7 +28,7 @@ export function ProgressView() {
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
   const [parsedSemesters, setParsedSemesters] = useState<Map<string, { approved: number, failed: number, dropped: number, notDone: number }>>(new Map());
   const [parsedWorkload, setParsedWorkload] = useState<WorkloadData | null>(null);
-  const [disciplinesBySemester, setDisciplinesBySemester] = useState<Map<string, { approved: string[], total: string[] }>>(new Map());
+  const [disciplinesBySemester, setDisciplinesBySemester] = useState<Map<string, SemesterDisciplineData>>(new Map());
   const [importError, setImportError] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
   
@@ -552,6 +552,7 @@ export function ProgressView() {
         <div className="space-y-3">
           {mergedSemesters.map(({ term, approved, failed, dropped, notDone, isCurrent }) => {
             const total = approved + failed + dropped + notDone;
+            const semesterDisciplines = disciplinesBySemester.get(term);
 
             return (
               <div
@@ -577,27 +578,40 @@ export function ProgressView() {
                   {Array.from({ length: total }).map((_, index) => {
                     let colorClass: string;
                     let title: string;
+                    let disciplineCode: string | undefined;
 
                     if (index < approved) {
                       colorClass = 'bg-green-500';
                       title = 'Aprovação';
+                      disciplineCode = semesterDisciplines?.approved[index];
                     } else if (index < approved + failed) {
                       colorClass = 'bg-red-500';
                       title = 'Reprovação';
+                      disciplineCode = semesterDisciplines?.failed[index - approved];
                     } else if (index < approved + failed + dropped) {
                       colorClass = 'bg-gray-700';
                       title = 'Trancamento';
+                      disciplineCode = semesterDisciplines?.dropped[index - approved - failed];
                     } else {
                       colorClass = 'bg-gray-300';
                       title = 'Não feito';
                     }
 
+                    const tooltipContent = disciplineCode ? `${title}: ${disciplineCode}` : title;
+
                     return (
-                      <div
-                        key={index}
-                        className={`h-4 rounded-sm ${colorClass}`}
-                        title={title}
-                      />
+                      <TooltipProvider key={index}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className={`h-4 rounded-sm ${colorClass} cursor-pointer`}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">{tooltipContent}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     );
                   })}
                 </div>
