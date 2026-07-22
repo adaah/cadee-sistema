@@ -5,10 +5,11 @@ import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { useMyCourses } from '@/hooks/useMyCourses';
 import { useMySections } from '@/hooks/useMySections';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
+import { useMode } from '@/hooks/useMode';
 import { fetchProgramDetail, type ProgramDetail } from '@/services/api';
 import { parseCompleteHistory, type WorkloadData, type SemesterDisciplineData } from '@/utils/historyParser';
 import { getCourseWorkload, getWorkloadCategory, mergeSemesterOutcomes, sumWorkloadByCategory } from '@/lib/semester';
-import { GraduationCap, BookOpen, Clock, Info, Upload, X } from 'lucide-react';
+import { GraduationCap, BookOpen, Clock, Info, Upload, X, Shield } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from 'react';
@@ -19,6 +20,7 @@ export function ProgressView() {
   const { courses, isLoading: coursesLoading } = useMyCourses();
   const { mySections } = useMySections();
   const { currentTerm } = useCurrentTerm();
+  const { setMode } = useMode();
   
   // Estados para importação de histórico
   const [showImportModal, setShowImportModal] = useState(false);
@@ -175,6 +177,9 @@ export function ProgressView() {
     
     // Manter os dados de carga horária extraídos para uso nas métricas
     // parsedWorkload já está no estado, não precisa limpar aqui
+    
+    // Mudar automaticamente para modo completo quando histórico é importado
+    setMode('full');
     
     setShowImportModal(false);
     // Não limpar os dados parseados para que possam ser usados nas métricas
@@ -774,12 +779,13 @@ export function ProgressView() {
                   <input type="file" accept=".pdf,text/plain" className="hidden" onChange={handleFileChange} />
                 </label>
 
-                <textarea
-                  className="w-full min-h-[100px] sm:min-h-[140px] rounded-lg border border-border bg-background p-3 text-sm"
-                  placeholder="Cole aqui o texto do histórico (Ctrl+A, Ctrl+C no PDF aberto)"
-                  value={importText}
-                  onChange={(e) => handleParseImport(e.target.value)}
-                />
+                <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground mb-1 flex items-center gap-1">
+                    <Shield className="w-3 h-3" />
+                    Privacidade
+                  </p>
+                  <p>Seu histórico não é armazenado em nenhum local. É utilizado apenas para extração de texto sobre as disciplinas e progresso, sendo automaticamente descartado após a extração.</p>
+                </div>
 
                 {isParsing && <p className="text-sm text-muted-foreground">Lendo PDF...</p>}
                 {importError && <p className="text-sm text-destructive">{importError}</p>}
@@ -949,7 +955,7 @@ export function ProgressView() {
                   className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
                   disabled={isParsing}
                 >
-                  Aplicar e calcular progresso
+                  Aplicar
                 </button>
               </div>
             </motion.div>
