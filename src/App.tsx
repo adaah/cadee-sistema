@@ -30,33 +30,33 @@ function AppContent() {
   const { isOnboarded } = useApp();
   const { selectedPrograms } = useMyPrograms();
 
-  if (!isOnboarded) {
-    return <Onboarding />;
-  }
-
   const hasCourseSelected = selectedPrograms.length > 0;
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route 
-          path="/" 
-          element={hasCourseSelected ? <Index /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/disciplinas" 
-          element={hasCourseSelected ? <Disciplinas /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/planejador" 
-          element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
-        />
-        <Route 
-          path="/configuracoes" 
-          element={hasCourseSelected ? <Configuracoes /> : <NoCourseSelected />} 
-        />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      {!isOnboarded ? (
+        <Onboarding />
+      ) : (
+        <Routes>
+          <Route 
+            path="/" 
+            element={hasCourseSelected ? <Index /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/disciplinas" 
+            element={hasCourseSelected ? <Disciplinas /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/planejador" 
+            element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/configuracoes" 
+            element={hasCourseSelected ? <Configuracoes /> : <NoCourseSelected />} 
+          />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      )}
     </BrowserRouter>
   );
 }
