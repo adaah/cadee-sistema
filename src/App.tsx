@@ -29,6 +29,17 @@ function AppContent() {
   const { isOnboarded } = useApp();
   const { selectedPrograms } = useMyPrograms();
 
+  // Check if a course has been selected
+  const hasSelectedCourse = useMemo(() => {
+    try {
+      const selectedPrograms = localStorage.getItem('selectedPrograms');
+      const programs = selectedPrograms ? JSON.parse(selectedPrograms) : [];
+      return Array.isArray(programs) && programs.length > 0;
+    } catch {
+      return false;
+    }
+  }, []);
+
   if (!isOnboarded) {
     return <Onboarding />;
   }

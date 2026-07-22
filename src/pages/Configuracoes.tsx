@@ -281,6 +281,12 @@ const Configuracoes = () => {
                 Eduarda Almeida (adaah)
               </a>
             </p>
+            <p className="mt-1">
+              Orientador:{' '}
+              <span className="text-primary">
+                Rodrigo Rocha
+              </span>
+            </p>
           </div>
         </div>
       </div>
