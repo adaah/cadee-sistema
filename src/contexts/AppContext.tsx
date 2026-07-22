@@ -30,7 +30,18 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const completedDisciplinesAtom = atomWithStorage<string[]>('completedDisciplines', []);
 const disciplineStatusesAtom = atomWithStorage<Record<string, DisciplineStatus>>('disciplineStatuses', {});
 const semesterOutcomesAtom = atomWithStorage<Record<string, SemesterOutcome>>('semesterOutcomes', {});
-const themeAtom = atomWithStorage<'light' | 'dark'>('theme', 'light');
+
+// Detectar tema do sistema se não houver preferência salva
+const getInitialTheme = (): 'light' | 'dark' => {
+  const savedTheme = localStorage.getItem('theme');
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    return savedTheme;
+  }
+  // Se não houver preferência salva, usar tema do sistema
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+};
+
+const themeAtom = atomWithStorage<'light' | 'dark'>('theme', getInitialTheme());
 const onboardedAtom = atomWithStorage<boolean>('isOnboarded', false);
 
 const toggleCompletedDisciplineAtom = atom(null, (get, set, code: string) => {
