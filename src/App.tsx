@@ -33,26 +33,26 @@ function AppContent() {
     return <Onboarding />;
   }
 
-  const hasSelectedCourse = selectedPrograms.length > 0;
+  const hasCourseSelected = selectedPrograms.length > 0;
 
   return (
     <BrowserRouter>
       <Routes>
         <Route 
           path="/" 
-          element={hasSelectedCourse ? <Index /> : <NoCourseSelected />} 
+          element={hasCourseSelected ? <Index /> : <NoCourseSelected />} 
         />
         <Route 
           path="/disciplinas" 
-          element={hasSelectedCourse ? <Disciplinas /> : <NoCourseSelected />} 
+          element={hasCourseSelected ? <Disciplinas /> : <NoCourseSelected />} 
         />
         <Route 
           path="/planejador" 
-          element={hasSelectedCourse ? <Planejador /> : <NoCourseSelected />} 
+          element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
         />
         <Route 
           path="/configuracoes" 
-          element={hasSelectedCourse ? <Configuracoes /> : <NoCourseSelected />} 
+          element={hasCourseSelected ? <Configuracoes /> : <NoCourseSelected />} 
         />
         <Route path="*" element={<NotFound />} />
       </Routes>
