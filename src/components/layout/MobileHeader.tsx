@@ -22,9 +22,7 @@ export function MobileHeader() {
     <header className="md:hidden fixed top-0 left-0 right-0 bg-card/95 backdrop-blur-sm border-b border-border/50 z-40 shadow-sm">
       <div className="flex items-center justify-between h-14 px-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">CA</span>
-          </div>
+          <img src="/logo.png" alt="CADEE Logo" className="h-8 w-auto" />
           <span className="font-semibold text-foreground">CADEE</span>
         </div>
         

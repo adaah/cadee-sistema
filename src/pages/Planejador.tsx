@@ -13,7 +13,6 @@ import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { buildCurrentTermSectionIndex, filterSectionsByCurrentTerm, mergeProgramCoursesWithOffered } from '@/lib/semester';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { getCompetitionLevel, getPhase1Level, getPhase2Level } from '@/lib/competition';
 import { useCourseSections, usePrograms, useProgramDetail, useCourseByCode, useCourses, useSections } from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -1324,22 +1323,24 @@ function SectionDetailModal({
                       ? section.time_codes.join(', ')
                       : 'Horário não definido'}
                   </p>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {(() => {
-                      const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
-                      const horariosParsed = parseTimeCodes(timeCodes);
-                      if (horariosParsed.length > 0) {
-                        return horariosParsed.map((h, idx) => (
-                          <span key={idx} className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-0.5 text-xs font-mono">
-                            {h.dia} {h.horarioInicio} - {h.horarioFim}
-                          </span>
-                        ));
-                      }
-                      return (
-                        <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded">Horário não informado</span>
-                      );
-                    })()}
-                  </div>
+                  {(() => {
+                    const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
+                    const horariosParsed = parseTimeCodes(timeCodes);
+                    return (
+                      <div className="mt-1 grid gap-1" style={{ gridTemplateColumns: horariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
+                        {horariosParsed.length > 0 ? (
+                          horariosParsed.map((h, idx) => (
+                            <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono min-h-[40px] flex flex-col items-start justify-center">
+                              <span className="font-semibold">{h.dia}</span>
+                              <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded">Horário não informado</span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1401,10 +1402,11 @@ function SectionDetailModal({
                                 {conflict.name}
                               </div>
                               {conflictHorariosParsed.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                <div className="grid gap-1 mt-0.5" style={{ gridTemplateColumns: conflictHorariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
                                   {conflictHorariosParsed.map((h, hIdx) => (
-                                    <span key={hIdx} className="inline-block bg-destructive/20 text-destructive rounded px-2 py-0.5 text-xs font-mono border border-destructive/30">
-                                      {h.dia} {h.horarioInicio} - {h.horarioFim}
+                                    <span key={hIdx} className="inline-block bg-destructive/20 text-destructive rounded px-2 py-1 text-xs font-mono border border-destructive/30 min-h-[40px] flex flex-col items-start justify-center">
+                                      <span className="font-semibold">{h.dia}</span>
+                                      <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
                                     </span>
                                   ))}
                                 </div>
@@ -1495,11 +1497,12 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
       <div className="space-y-2 text-xs">
         <div>
           <span className="font-semibold text-muted-foreground">Horários:</span>
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-1 grid gap-1" style={{ gridTemplateColumns: horariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
             {horariosParsed.length > 0 ? (
               horariosParsed.map((h, idx) => (
-                <span key={idx} className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-0.5 text-xs font-mono">
-                  {h.dia} {h.horarioInicio} - {h.horarioFim}
+                <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono min-h-[40px] flex flex-col items-start justify-center">
+                  <span className="font-semibold">{h.dia}</span>
+                  <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
                 </span>
               ))
             ) : (
@@ -1793,23 +1796,15 @@ function SectionsList({
           const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
           const seatsAccepted = (section as any)?.seats_accepted ?? 0;
           const seatsCount = (section as any)?.seats_count ?? 0;
-          const progress = seatsCount > 0 ? Math.min(100, Math.max(0, Math.round((seatsAccepted / seatsCount) * 100))) : 0;
-          const seatsRequested = (section as any)?.seats_requested ?? 0;
-          const seatsRerequested = (section as any)?.seats_rerequested ?? 0;
-          const competition = getCompetitionLevel(seatsCount, seatsRequested, seatsRerequested);
-          const compPhase1 = getPhase1Level(seatsCount, seatsRequested);
-          const compPhase2 = getPhase2Level(seatsCount, seatsAccepted, seatsRerequested);
           const isSelected = hasSection(section.id_ref);
           const conflicts = getConflictsForSection(section);
           const hasConflict = conflicts.length > 0;
-          const available = Math.max(0, seatsCount - seatsAccepted);
-          const isAlmostFull = available > 0 && available <= 5;
           const hasExclusive = Array.isArray((section as any)?.spots_reserved) && 
             ((section as any).spots_reserved as any[]).some((r: any) => {
               const t = ((r as any)?.program?.title || '').trim().toLowerCase();
               return t && myProgramTitles.has(t);
             });
-          const reservedMine = getReservedUnfilledForTitles(section as any, myProgramTitles);
+          const reservedRemaining = getReservedUnfilledForTitles(section as any, myProgramTitles);
           const horariosParsed = parseTimeCodes(timeCodes);
 
           const currentSection = getSectionForCourse(courseCode);
@@ -1869,11 +1864,12 @@ function SectionsList({
                   <div>
                     <span className="font-semibold text-muted-foreground">Horários:</span>
                     <p className="mt-1">{timeCodes.length > 0 ? timeCodes.join(', ') : 'Horário não definido'}</p>
-                    <div className="mt-1 flex flex-wrap gap-1">
+                    <div className="mt-1 grid gap-1" style={{ gridTemplateColumns: horariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
                       {horariosParsed.length > 0 ? (
                         horariosParsed.map((h, idx) => (
-                          <span key={idx} className="inline-block bg-blue-100 text-blue-800 rounded px-2 py-0.5 text-xs font-mono">
-                            {h.dia} {h.horarioInicio} - {h.horarioFim}
+                          <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono min-h-[40px] flex flex-col items-start justify-center">
+                            <span className="font-semibold">{h.dia}</span>
+                            <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
                           </span>
                         ))
                       ) : (
@@ -1884,55 +1880,31 @@ function SectionsList({
                 </div>
               </div>
 
-              {seatsCount > 0 && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                    <span>Vagas: {seatsAccepted}/{seatsCount}</span>
-                    <span>{progress}% preenchido</span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
-                </div>
-              )}
-
               <div className="flex flex-wrap gap-1.5 mt-3">
-                {isAlmostFull && (
+                {hasExclusive && reservedRemaining > 0 && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-600/10 text-indigo-600 inline-flex items-center gap-1">
-                          <Flame className="w-3 h-3" /> Poucas Vagas
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-primary text-primary-foreground inline-flex items-center gap-1 cursor-default">
+                          <Star className="w-3 h-3" /> Reservado para o curso {reservedRemaining} vagas
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Restam apenas {available} vagas disponíveis</p>
+                        <div>Vagas reservadas ao(s) seu(s) programa(s) selecionado(s).</div>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                {hasExclusive && reservedMine > 0 && (
+                {!hasExclusive && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary inline-flex items-center gap-1">
-                          <Star className="w-3 h-3" /> Reservado ({reservedMine})
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground inline-flex items-center gap-1 cursor-default">
+                          Sem reservas para o curso
                         </span>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Vagas reservadas para seu(s) curso(s)</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {competition.level === 'alta' && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-600/10 text-amber-600">
-                          Alta concorrência
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Muitos alunos interessados nesta turma</p>
+                        <div>Esta turma não possui vagas reservadas para o seu curso.</div>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

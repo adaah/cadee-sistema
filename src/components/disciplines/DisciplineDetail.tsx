@@ -7,13 +7,14 @@ import { useMySections } from '@/hooks/useMySections';
 import { cn, getFreeSeats } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useFavoriteCourses } from '@/hooks/useFavoriteCourses';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { LargeDisciplineCard } from '@/components/disciplines/LargeDisciplineCard';
 import { SectionCard } from '@/components/disciplines/SectionCard';
 import { BreadcrumbTags } from '@/components/disciplines/BreadcrumbTags';
 import { Badge } from '@/components/ui/badge';
 import { motion, useAnimationControls } from 'motion/react';
 import { FavoriteButton } from '@/components/common/FavoriteButton';
+import { AnimatePresence } from 'framer-motion';
 // Extracted component to keep identity stable across renders
 function CompletedButton({
   completed,
@@ -93,7 +94,7 @@ function CompletedButton({
 interface DisciplineDetailProps {
   discipline: Course;
   onClose: () => void;
-  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course) => void;
+  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course, mainCode?: string) => void;
 }
 
 export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: DisciplineDetailProps) {
@@ -113,6 +114,29 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   const [openPrereq, setOpenPrereq] = useState(false);
   const [openCoreq, setOpenCoreq] = useState(false);
   const [openEquiv, setOpenEquiv] = useState(false);
+
+  // Função para comportamento de accordion
+  const handleToggleSection = (section: 'classes' | 'prereq' | 'coreq' | 'equiv') => {
+    const isCurrentlyOpen = {
+      classes: openClasses,
+      prereq: openPrereq,
+      coreq: openCoreq,
+      equiv: openEquiv,
+    }[section];
+
+    // Se já está aberto, fecha. Se está fechado, abre e fecha os outros
+    if (isCurrentlyOpen) {
+      setOpenClasses(false);
+      setOpenPrereq(false);
+      setOpenCoreq(false);
+      setOpenEquiv(false);
+    } else {
+      setOpenClasses(section === 'classes');
+      setOpenPrereq(section === 'prereq');
+      setOpenCoreq(section === 'coreq');
+      setOpenEquiv(section === 'equiv');
+    }
+  };
 
   // seleção de opção para arrays de arrays
   const [prereqOptionIndex, setPrereqOptionIndex] = useState(0);
@@ -150,23 +174,23 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
     });
   };
 
-  const isCompleted = completedDisciplines.includes(currentCode);
+  const isCompleted = useMemo(() => completedDisciplines.includes(currentCode), [completedDisciplines, currentCode]);
   
   // Verificar se disciplina está disponível ou bloqueada
   const currentCourse: Course = {
     code: currentCode,
     name: currentName,
-    prerequisites: currentDetail?.prerequisites || [],
+    prerequisites: (currentDetail as any)?.prerequisites || [],
     mode: currentDetail?.mode || '',
     id_ref: currentDetail?.id_ref || '',
     location: currentDetail?.location || '',
     department: currentDetail?.department || '',
     type: currentDetail?.type || '',
     credits: currentDetail?.credits || 0,
-    workload: currentDetail?.workload || 0,
-    sections_count: currentDetail?.sections_count || 0,
-    sections_url: currentDetail?.sections_url || '',
-    detail_url: currentDetail?.detail_url || ''
+    workload: (currentDetail as any)?.workload || 0,
+    sections_count: (currentDetail as any)?.sections_count || 0,
+    sections_url: (currentDetail as any)?.sections_url || '',
+    detail_url: (currentDetail as any)?.detail_url || ''
   };
   
   // Importar a lógica de verificação de pré-requisitos
@@ -231,37 +255,31 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   
 
   return (
-    <div className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-50 flex items-center justify-end">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full max-w-lg h-full bg-card shadow-elevated overflow-y-auto">
-        <div className="sticky top-0 bg-card border-b border-border p-6 z-10">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-lg hover:bg-muted transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-
-          <div className="mb-3">
-            <BreadcrumbTags
-              items={stack}
-              onSelectIndex={(idx) => {
-                // voltar para um nível do breadcrumb
-                setStack((prev) => prev.slice(0, idx + 1));
-              }}
-            />
-          </div>
-          
-          <div className="flex items-center justify-between gap-3 pr-10">
-            <h2 className="text-xl font-bold text-card-foreground">{currentName}</h2>
-            <FavoriteButton
-              active={isFavorite(currentCode)}
-              onToggle={() => toggleFavorite(currentCode)}
-              iconClassName="w-5 h-5"
-            />
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="bg-background rounded-lg p-4 w-full max-w-sm max-h-[75vh] overflow-y-auto md:max-w-2xl md:p-6 shadow border my-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-xl font-bold">{currentName}</h3>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
+          <div className="flex items-center gap-4 mb-4 text-sm text-muted-foreground">
             {typeof (currentDetail as any)?.workload === 'number' && (
               <div className="flex items-center gap-1">
                 <Clock className="w-4 h-4" />
@@ -276,236 +294,289 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
 
           <CompletedButton 
             completed={isCompleted} 
-            onClick={() => toggleCompletedDiscipline(currentCode)} 
+            onClick={() => {
+              toggleCompletedDiscipline(currentCode);
+              // Marcar/desmarcar também todas as equivalentes
+              const equivalents = currentDetail?.equivalences || [];
+              equivalents.forEach((eq: any) => {
+                if (eq.code && eq.code !== currentCode) {
+                  toggleCompletedDiscipline(eq.code);
+                }
+              });
+            }} 
             onRestrictedAction={onRestrictedAction}
             course={currentCourse}
             isAvailable={isAvailable}
             isBlocked={isBlocked}
           />
-        </div>
 
-        <div className="p-6 space-y-6">
-          {currentDetail?.description && (
-            <div>
-              <h3 className="font-semibold text-card-foreground mb-2">Ementa</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {currentDetail.description}
-              </p>
-            </div>
-          )}
+          <div className="space-y-6 mt-6">
+            {currentDetail?.description && (
+              <div>
+                <h3 className="font-semibold text-card-foreground mb-2">Ementa</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  {currentDetail.description}
+                </p>
+              </div>
+            )}
 
-          {/* Turmas Disponíveis com collapse */}
-          <div className="space-y-3">
-            <SectionHeader
-              title="Turmas Disponíveis"
-              count={sections.length}
-              open={openClasses}
-              onToggle={() => setOpenClasses((v) => !v)}
-            />
-
-            <CollapseAnimated open={openClasses}>
-                {isLoading ? (
-                  <div className="space-y-3">
-                    {[...Array(3)].map((_, i) => (
-                      <div key={i} className="p-4 rounded-xl border-2 border-border bg-muted/50">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 space-y-2">
-                            <div className="h-4 w-40 bg-muted rounded" />
-                            <div className="h-3 w-48 bg-muted rounded" />
-                            <div className="h-3 w-32 bg-muted rounded" />
-                          </div>
-                          <div className="h-9 w-24 bg-muted rounded" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : sections.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">Nenhuma turma disponível para esta disciplina no momento.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {[...sections]
-                      .sort((a, b) => getFreeSeats(b) - getFreeSeats(a))
-                      .map((section) => {
-                      const isAdded = mySections.some((s) => s.id_ref === section.id_ref);
-                      return (
-                        <SectionCard
-                          key={section.id_ref}
-                          section={section}
-                          isAdded={isAdded}
-                          onAdd={() => handleAddClass(section)}
-                          onNavigateCourse={(code) => setStack((prev) => [...prev, { code }])}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-            </CollapseAnimated>
-          </div>
-
-          {/* Pré-requisitos */}
-          {(currentDetail?.prerequisites?.length || 0) > 0 && (
+            {/* Turmas Disponíveis com collapse */}
             <div className="space-y-3">
               <SectionHeader
-                title="Pré-requisitos"
-                count={currentDetail?.prerequisites?.length}
-                open={openPrereq}
-                onToggle={() => setOpenPrereq((v) => !v)}
+                title="Turmas Disponíveis"
+                count={sections.length}
+                open={openClasses}
+                onToggle={() => handleToggleSection('classes')}
               />
 
-              <CollapseAnimated open={openPrereq}>
-                  {(() => {
-                    const options = currentDetail?.prerequisites || [];
-                    const remainingCounts = options.map((opt) => {
-                      const list = opt || [];
-                      return list.reduce((acc, item) => {
-                        const code = (item as any)?.code;
-                        return acc + (code && !completedDisciplines.includes(code) ? 1 : 0);
-                      }, 0);
-                    });
-                    const minRemaining = remainingCounts.length > 0 ? Math.min(...remainingCounts) : 0;
-                    return (
+              <CollapseAnimated open={openClasses}>
+                  {isLoading ? (
+                    <div className="space-y-3">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="p-4 rounded-xl border-2 border-border bg-muted/50">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 w-40 bg-muted rounded" />
+                              <div className="h-3 w-48 bg-muted rounded" />
+                              <div className="h-3 w-32 bg-muted rounded" />
+                            </div>
+                            <div className="h-9 w-24 bg-muted rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : sections.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">Nenhuma turma disponível para esta disciplina no momento.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {[...sections]
+                        .sort((a, b) => getFreeSeats(b) - getFreeSeats(a))
+                        .map((section) => {
+                        const isAdded = mySections.some((s) => s.id_ref === section.id_ref);
+                        return (
+                          <SectionCard
+                            key={section.id_ref}
+                            section={section}
+                            isAdded={isAdded}
+                            onAdd={() => handleAddClass(section)}
+                            onNavigateCourse={(code) => setStack((prev) => [...prev, { code }])}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+              </CollapseAnimated>
+            </div>
+
+            {/* Pré-requisitos */}
+            {(currentDetail?.prerequisites?.length || 0) > 0 && (
+              <div className="space-y-3">
+                <SectionHeader
+                  title="Pré-requisitos"
+                  count={currentDetail?.prerequisites?.length}
+                  open={openPrereq}
+                  onToggle={() => handleToggleSection('prereq')}
+                />
+
+                <CollapseAnimated open={openPrereq}>
+                    {(() => {
+                      const options = currentDetail?.prerequisites || [];
+                      const remainingCounts = options.map((opt) => {
+                        const list = opt || [];
+                        return list.reduce((acc, item) => {
+                          const code = (item as any)?.code;
+                          return acc + (code && !completedDisciplines.includes(code) ? 1 : 0);
+                        }, 0);
+                      });
+                      const minRemaining = remainingCounts.length > 0 ? Math.min(...remainingCounts) : 0;
+                      return (
+                        <div className="flex items-center gap-2 flex-wrap mb-3">
+                          {options.map((_, i) => (
+                            <button
+                              key={`pr-option-${i}`}
+                              className={cn(
+                                'px-3 py-1.5 rounded-full text-xs font-medium transition-all inline-flex items-center gap-1',
+                                prereqOptionIndex === i
+                                  ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                                  : 'bg-muted text-muted-foreground hover:bg-accent',
+                              )}
+                              onClick={() => setPrereqOptionIndex(i)}
+                            >
+                              {`Opção ${i + 1}`}
+                              {remainingCounts[i] === minRemaining && (
+                                <Star className="w-3 h-3 text-yellow-500" />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    <div className="grid grid-cols-1 gap-3">
+                      {(currentDetail!.prerequisites![prereqOptionIndex] || []).map((pr) => {
+                        const synced = !!(pr as any).name;
+                        const code = pr.code;
+                        const name = (pr as any).name as string | undefined;
+                        const summary = allCourses.find((c) => c.code === code) || null;
+                        const isPrereqCompleted = completedDisciplines.includes(code);
+                        
+                        return (
+                          <LargeDisciplineCard
+                            key={`pre-${code}`}
+                            code={code}
+                            synced={synced}
+                            name={name}
+                            summary={summary}
+                            isEquivalent={true}
+                            showCompletedButton={synced}
+                            onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
+                            onRestrictedAction={onRestrictedAction}
+                            courseData={summary}
+                          />
+                        );
+                      })}
+                    </div>
+                </CollapseAnimated>
+              </div>
+            )}
+
+            {/* Correquisitos */}
+            {(currentDetail?.corequisites?.length || 0) > 0 && (
+              <div className="space-y-3">
+                <SectionHeader
+                  title="Correquisitos"
+                  count={currentDetail?.corequisites?.length}
+                  open={openCoreq}
+                  onToggle={() => handleToggleSection('coreq')}
+                />
+
+                <CollapseAnimated open={openCoreq}>
+                    {(currentDetail?.corequisites?.length || 0) > 1 && (
                       <div className="flex items-center gap-2 flex-wrap mb-3">
-                        {options.map((_, i) => (
+                        {currentDetail!.corequisites!.map((_, i) => (
                           <button
-                            key={`pr-option-${i}`}
+                            key={`co-option-${i}`}
                             className={cn(
-                              'px-3 py-1.5 rounded-full text-xs font-medium transition-all inline-flex items-center gap-1',
-                              prereqOptionIndex === i
+                              'px-3 py-1.5 rounded-full text-xs font-medium transition-all',
+                              coreqOptionIndex === i
                                 ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
                                 : 'bg-muted text-muted-foreground hover:bg-accent',
                             )}
-                            onClick={() => setPrereqOptionIndex(i)}
+                            onClick={() => setCoreqOptionIndex(i)}
                           >
                             {`Opção ${i + 1}`}
-                            {remainingCounts[i] === minRemaining && (
-                              <Star className="w-3 h-3 text-yellow-500" />
-                            )}
                           </button>
                         ))}
                       </div>
-                    );
-                  })()}
+                    )}
 
-                  <div className="grid grid-cols-1 gap-3">
-                    {(currentDetail!.prerequisites![prereqOptionIndex] || []).map((pr) => {
-                      const synced = !!(pr as any).name;
-                      const code = pr.code;
-                      const name = (pr as any).name as string | undefined;
-                      const summary = allCourses.find((c) => c.code === code) || null;
-                      return (
-                        <LargeDisciplineCard
-                          key={`pre-${code}`}
-                          code={code}
-                          synced={synced}
-                          name={name}
-                          summary={summary}
-                          onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
-                        />
-                      );
-                    })}
-                  </div>
-              </CollapseAnimated>
-            </div>
-          )}
-
-          {/* Correquisitos */}
-          {(currentDetail?.corequisites?.length || 0) > 0 && (
-            <div className="space-y-3">
-              <SectionHeader
-                title="Correquisitos"
-                count={currentDetail?.corequisites?.length}
-                open={openCoreq}
-                onToggle={() => setOpenCoreq((v) => !v)}
-              />
-
-              <CollapseAnimated open={openCoreq}>
-                  {(currentDetail?.corequisites?.length || 0) > 1 && (
-                    <div className="flex items-center gap-2 flex-wrap mb-3">
-                      {currentDetail!.corequisites!.map((_, i) => (
-                        <button
-                          key={`co-option-${i}`}
-                          className={cn(
-                            'px-3 py-1.5 rounded-full text-xs font-medium transition-all',
-                            coreqOptionIndex === i
-                              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                              : 'bg-muted text-muted-foreground hover:bg-accent',
-                          )}
-                          onClick={() => setCoreqOptionIndex(i)}
-                        >
-                          {`Opção ${i + 1}`}
-                        </button>
-                      ))}
+                    <div className="grid grid-cols-1 gap-3">
+                      {(currentDetail!.corequisites![coreqOptionIndex] || []).map((co) => {
+                        const synced = !!(co as any).name;
+                        const code = co.code;
+                        const name = (co as any).name as string | undefined;
+                        const summary = allCourses.find((c) => c.code === code) || null;
+                        return (
+                          <LargeDisciplineCard
+                            key={`co-${code}`}
+                            code={code}
+                            synced={synced}
+                            name={name}
+                            summary={summary}
+                            onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
+                          />
+                        );
+                      })}
                     </div>
-                  )}
-
-                  <div className="grid grid-cols-1 gap-3">
-                    {(currentDetail!.corequisites![coreqOptionIndex] || []).map((co) => {
-                      const synced = !!(co as any).name;
-                      const code = co.code;
-                      const name = (co as any).name as string | undefined;
-                      const summary = allCourses.find((c) => c.code === code) || null;
-                      return (
-                        <LargeDisciplineCard
-                          key={`co-${code}`}
-                          code={code}
-                          synced={synced}
-                          name={name}
-                          summary={summary}
-                          onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
-                        />
-                      );
-                    })}
-                  </div>
-              </CollapseAnimated>
-            </div>
-          )}
-
-          {/* Equivalentes */}
-          {(currentDetail?.equivalences?.length || 0) > 0 && (() => {
-            // Flatten + dedupe por código
-            const flat = (currentDetail?.equivalences || []).flat();
-            const seen = new Set<string>();
-            const unique = flat.filter((eq) => {
-              if (!eq?.code) return false;
-              if (seen.has(eq.code)) return false;
-              seen.add(eq.code);
-              return true;
-            });
-            if (unique.length === 0) return null;
-            return (
-              <div className="space-y-3">
-                <SectionHeader
-                  title="Equivalentes"
-                  count={unique.length}
-                  open={openEquiv}
-                  onToggle={() => setOpenEquiv((v) => !v)}
-                />
-                <CollapseAnimated open={openEquiv}>
-                  <div className="grid grid-cols-1 gap-3">
-                    {unique.map((eq) => {
-                      const synced = !!(eq as any).name;
-                      const code = eq.code;
-                      const name = (eq as any).name as string | undefined;
-                      const summary = allCourses.find((c) => c.code === code) || null;
-                      return (
-                        <LargeDisciplineCard
-                          key={`eq-${code}`}
-                          code={code}
-                          synced={synced}
-                          name={name}
-                          summary={summary}
-                          onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
-                        />
-                      );
-                    })}
-                  </div>
                 </CollapseAnimated>
               </div>
-            );
-          })()}
-          
-        </div>
-      </div>
-    </div>
+            )}
+
+            {/* Equivalentes */}
+            {(currentDetail?.equivalences?.length || 0) > 0 && (() => {
+              // Flatten + dedupe por código
+              const flat = (currentDetail?.equivalences || []).flat();
+              const seen = new Set<string>();
+              const unique = flat.filter((eq) => {
+                if (!eq?.code) return false;
+                if (seen.has(eq.code)) return false;
+                seen.add(eq.code);
+                return true;
+              });
+              if (unique.length === 0) return null;
+              return (
+                <div className="space-y-3">
+                  <SectionHeader
+                    title="Equivalentes"
+                    count={unique.length}
+                    open={openEquiv}
+                    onToggle={() => handleToggleSection('equiv')}
+                  />
+                  <CollapseAnimated open={openEquiv}>
+                    <div className="grid grid-cols-1 gap-3">
+                      {unique.map((eq) => {
+                        const synced = !!(eq as any).name;
+                        const code = eq.code;
+                        const name = (eq as any).name as string | undefined;
+                        const summary = allCourses.find((c) => c.code === code) || null;
+                        const isEquivCompleted = completedDisciplines.includes(code);
+                        const isMainCompleted = completedDisciplines.includes(currentCode);
+                        
+                        // Buscar pré-requisitos da equivalente - usar eq diretamente se tiver, senão buscar do summary
+                        let equivPrereqs = (eq as any)?.prerequisites || (summary as any)?.prerequisites || [];
+                        
+                        // Se a equivalente não tiver pré-requisitos nos dados, usar os pré-requisitos da disciplina principal como fallback
+                        // (equivalentes geralmente têm pré-requisitos similares à disciplina principal)
+                        if (equivPrereqs.length === 0 && currentDetail?.prerequisites) {
+                          equivPrereqs = currentDetail.prerequisites;
+                        }
+                        
+                        // Criar objeto Course completo para a equivalente com pré-requisitos
+                        const equivCourseData: Course = {
+                          code: code,
+                          name: name || code,
+                          prerequisites: equivPrereqs,
+                          mode: (summary as any)?.mode || '',
+                          id_ref: (summary as any)?.id_ref || '',
+                          location: (summary as any)?.location || '',
+                          department: (summary as any)?.department || '',
+                          type: (summary as any)?.type || '',
+                          credits: (summary as any)?.credits || 0,
+                          workload: (summary as any)?.workload || 0,
+                          sections_count: (summary as any)?.sections_count || 0,
+                          sections_url: (summary as any)?.sections_url || '',
+                          detail_url: (summary as any)?.detail_url || ''
+                        };
+                        
+                        // Mostrar botão se equivalente está cursada (para desmarcar) ou se principal não está cursada (para marcar)
+                        const showButton = isEquivCompleted || !isMainCompleted;
+                        
+                        return (
+                          <LargeDisciplineCard
+                            key={`eq-${code}`}
+                            code={code}
+                            synced={synced}
+                            name={name}
+                            summary={summary}
+                            isEquivalent={true}
+                            showCompletedButton={showButton}
+                            mainCode={currentCode}
+                            equivPrerequisites={equivPrereqs}
+                            onClick={synced ? () => setStack((prev) => [...prev, { code }]) : undefined}
+                            onRestrictedAction={onRestrictedAction}
+                            courseData={equivCourseData}
+                          />
+                        );
+                      })}
+                    </div>
+                  </CollapseAnimated>
+                </div>
+              );
+            })()}
+            
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

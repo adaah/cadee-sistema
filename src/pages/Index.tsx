@@ -22,12 +22,18 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState<'schedule' | 'progress'>('schedule');
   const { setMode, isFull, isSimplified } = useMode();
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [hasImportedHistory, setHasImportedHistory] = useState(false);
 
   useEffect(() => {
     const hasVisited = localStorage.getItem('firstVisit');
     if (!hasVisited) {
       setShowWelcomeModal(true);
     }
+  }, []);
+
+  useEffect(() => {
+    const savedData = localStorage.getItem('progressData');
+    setHasImportedHistory(!!savedData);
   }, []);
 
   const coursesByCode = useMemo(
@@ -144,6 +150,22 @@ const Index = () => {
                         Iniciar semestre {currentTerm}
                       </button>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isFull && !hasImportedHistory && (
+              <div className="mb-4 rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-4">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                      Importe seu histórico escolar
+                    </p>
+                    <p className="text-xs text-blue-800 dark:text-blue-200 mt-1">
+                      Para aproveitar ao máximo a experiência completa, vá até a tela de Progresso e importe seu histórico do SIGAA para acompanhar seu progresso e pré-requisitos automaticamente.
+                    </p>
                   </div>
                 </div>
               </div>

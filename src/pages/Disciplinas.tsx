@@ -20,7 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { parseCompleteHistory } from '@/utils/historyParser';
+import { parseCompleteHistory, type WorkloadData, codeRegex } from '@/utils/historyParser';
 
 const Disciplinas = () => {
   const { completedDisciplines, toggleCompletedDiscipline } = useApp();
@@ -39,7 +39,7 @@ const Disciplinas = () => {
   const [showDisciplinesModal, setShowDisciplinesModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showBlockedModal, setShowBlockedModal] = useState(false);
-  const [pendingAction, setPendingAction] = useState<{ type: 'completed' | 'favorite' | 'import'; course?: Course; codes?: string[] } | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ type: 'completed' | 'favorite' | 'import'; course?: Course; codes?: string[]; mainCode?: string } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [parsedCodes, setParsedCodes] = useState<string[]>([]);
@@ -59,19 +59,34 @@ const Disciplinas = () => {
     }
   }, []);
 
-  const handleRestrictedAction = (type: 'completed' | 'favorite', course: Course) => {
-    if (type === 'completed' && !hasAllPrereqsDone(course)) {
-      setPendingAction({ type, course });
-      setShowBlockedModal(true);
-      return;
+  const handleRestrictedAction = (type: 'completed' | 'favorite', course: Course, mainCode?: string) => {
+    if (type === 'completed') {
+      // Se já está cursada, permite desmarcar diretamente sem verificar bloqueio
+      if (completedDisciplines.includes(course.code)) {
+        toggleCompletedDiscipline(course.code);
+        if (mainCode) {
+          toggleCompletedDiscipline(mainCode);
+        }
+        return;
+      }
+      
+      // Se não está cursada e está bloqueada, mostra modal
+      if (!hasAllPrereqsDone(course)) {
+        setPendingAction({ type, course, mainCode });
+        setShowBlockedModal(true);
+        return;
+      }
     }
 
     if (isSimplified) {
-      setPendingAction({ type, course });
+      setPendingAction({ type, course, mainCode });
       setShowUpgradeModal(true);
     } else {
       if (type === 'completed') {
         toggleCompletedDiscipline(course.code);
+        if (mainCode) {
+          toggleCompletedDiscipline(mainCode);
+        }
       } else {
         toggleFavorite(course.code);
       }
@@ -131,6 +146,10 @@ const Disciplinas = () => {
       });
       // Marca a disciplina atual também
       toggleCompletedDiscipline(pendingAction.course.code);
+      // Se for equivalente, marca também a disciplina principal
+      if (pendingAction.mainCode) {
+        toggleCompletedDiscipline(pendingAction.mainCode);
+      }
     }
     setShowBlockedModal(false);
     setPendingAction(null);
@@ -139,6 +158,10 @@ const Disciplinas = () => {
   const markOnlyCurrentAsCompleted = () => {
     if (pendingAction?.course) {
       toggleCompletedDiscipline(pendingAction.course.code);
+      // Se for equivalente, marca também a disciplina principal
+      if (pendingAction.mainCode) {
+        toggleCompletedDiscipline(pendingAction.mainCode);
+      }
     }
     setShowBlockedModal(false);
     setPendingAction(null);
@@ -884,11 +907,13 @@ const Disciplinas = () => {
         )}
 
         {selectedDiscipline && (
-          <DisciplineDetail
-            discipline={selectedDiscipline}
-            onClose={() => setSelectedDiscipline(null)}
-            onRestrictedAction={handleRestrictedAction}
-          />
+          <AnimatePresence>
+            <DisciplineDetail
+              discipline={selectedDiscipline}
+              onClose={() => setSelectedDiscipline(null)}
+              onRestrictedAction={handleRestrictedAction}
+            />
+          </AnimatePresence>
         )}
 
         {/* Modal de Importar Histórico */}

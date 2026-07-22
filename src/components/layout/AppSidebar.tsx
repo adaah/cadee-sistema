@@ -16,9 +16,12 @@ export function AppSidebar() {
   return (
     <aside className="hidden md:flex flex-col w-64 min-h-screen bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
-      <div className="p-6">
-        <h1 className="text-2xl font-bold text-primary">CADEE</h1>
-        <p className="text-xs text-muted-foreground mt-1">Catálogo Auxiliar de Disciplinas e Estruturação de Estudos</p>
+      <div className="p-6 flex items-center gap-3">
+        <img src="/logo.png" alt="CADEE Logo" className="h-12 w-auto" />
+        <div>
+          <h1 className="text-xl font-bold text-primary">CADEE</h1>
+          <p className="text-[8px] text-muted-foreground mt-1">Catálogo Auxiliar de Disciplinas e Estruturação de Estudos</p>
+        </div>
       </div>
 
       {/* Navigation */}
