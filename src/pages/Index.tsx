@@ -7,14 +7,13 @@ import { ScheduleSummary } from '@/components/planner/ScheduleSummary';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
 import { Calendar, BookOpen, BarChart3, X, Sparkles, GraduationCap, Clock, AlertTriangle, Plus } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ProgressView } from '@/components/progress/ProgressView';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useMode } from '@/hooks/useMode';
 import { sumWorkloadByCategory } from '@/lib/semester';
 
 const Index = () => {
-  const navigate = useNavigate();
   const { mySections } = useMySections();
   const { myPrograms } = useMyPrograms();
   const { courses } = useMyCourses();
@@ -71,14 +70,6 @@ const Index = () => {
       return <ProgressView />;
     }
     return <ScheduleSummary />;
-  };
-
-  const handleContinueFromWelcome = () => {
-    setShowWelcomeModal(false);
-    localStorage.setItem('firstVisit', 'true');
-    if (isSimplified) {
-      navigate('/planejador');
-    }
   };
 
   return (
@@ -313,7 +304,10 @@ const Index = () => {
                   </button>
                 )}
                 <button
-                  onClick={handleContinueFromWelcome}
+                  onClick={() => {
+                    setShowWelcomeModal(false);
+                    localStorage.setItem('firstVisit', 'true');
+                  }}
                   className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90"
                 >
                   Continuar
