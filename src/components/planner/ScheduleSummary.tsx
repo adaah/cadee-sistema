@@ -1,15 +1,17 @@
 import { Users, Trash2, Clock, Info, AlertTriangle, CheckCircle2, XCircle, Ban, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMySections } from '@/hooks/useMySections';
 import { useMyCourses } from '@/hooks/useMyCourses.ts';
 import { useApp } from '@/contexts/AppContext';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
+import { useCourses, useSections } from '@/hooks/useApi';
 import { DisciplineDetail } from '@/components/disciplines/DisciplineDetail';
 import type { Course, Section } from '@/services/api';
 import type { DisciplineStatus } from '@/lib/semester';
 import { formatTimeCodes } from '@/lib/schedule';
 import { cn } from '@/lib/utils';
+import { getBlockCourseBaseCode, isBlockCourseCode, resolveBlockCourseName, getBlockCourseVariantLabel, findCorrespondingBlockSections } from '@/lib/blockCourses';
 
 const STATUS_CONFIG: Record<DisciplineStatus, { label: string; icon: typeof CheckCircle2; activeClass: string }> = {
   approved: {
@@ -41,6 +43,8 @@ function getConflictCodes(conflicts: Array<{ code: string; section: Section }>):
 export function ScheduleSummary() {
   const { mySections, toggleSection, getConflictsForSection } = useMySections();
   const { courses } = useMyCourses();
+  const { data: coursesIndex = [] } = useCourses();
+  const { data: allSections = [] } = useSections();
   const { getDisciplineStatus, setDisciplineStatus, clearDisciplineStatus } = useApp();
   const { currentTerm } = useCurrentTerm();
   const { pendingTransition, statusTerm, planningTerm, unresolvedCodes } = useSemesterTransition();
@@ -48,18 +52,38 @@ export function ScheduleSummary() {
   const [expandedStatus, setExpandedStatus] = useState<Set<string>>(new Set());
 
   const outcomeTerm = statusTerm || currentTerm;
+  
+  const coursesByCode = useMemo(() => new Map(courses.map((c) => [c.code, c])), [courses]);
+  const coursesIndexByCode = useMemo(() => new Map(coursesIndex.map((c) => [c.code, c])), [coursesIndex]);
+  
+  // Group sections by base course code
+  const groupedSections = useMemo(() => {
+    const groups = new Map<string, Section[]>();
+    for (const s of mySections) {
+      const code = s.course?.code || (s as { course_code?: string }).course_code;
+      if (code) {
+        const baseCode = getBlockCourseBaseCode(code);
+        const existing = groups.get(baseCode) || [];
+        existing.push(s);
+        groups.set(baseCode, existing);
+      }
+    }
+    return groups;
+  }, [mySections]);
 
   if (mySections.length === 0) {
     return null;
   }
 
-  const handleStatusClick = (code: string, status: DisciplineStatus) => {
-    const current = getDisciplineStatus(code);
-    if (current === status) {
-      clearDisciplineStatus(code, outcomeTerm || undefined);
-    } else {
-      setDisciplineStatus(code, status, outcomeTerm || undefined);
-    }
+  const handleStatusClick = (codes: string[], status: DisciplineStatus) => {
+    codes.forEach(code => {
+      const current = getDisciplineStatus(code);
+      if (current === status) {
+        clearDisciplineStatus(code, outcomeTerm || undefined);
+      } else {
+        setDisciplineStatus(code, status, outcomeTerm || undefined);
+      }
+    });
   };
 
   const toggleStatusExpanded = (key: string) => {
@@ -83,7 +107,7 @@ export function ScheduleSummary() {
           )}
         </div>
         <button
-          onClick={() => mySections.forEach((s) => toggleSection(s))}
+          onClick={() => mySections.forEach((s) => toggleSection(s, allSections))}
           className="text-xs sm:text-sm text-destructive hover:text-destructive/80 transition-colors shrink-0"
         >
           Limpar
@@ -97,20 +121,33 @@ export function ScheduleSummary() {
       )}
 
       <div className="space-y-3">
-        {mySections.map((s) => {
-          const disciplineCode = s.course?.code || (s as { course_code?: string }).course_code || '';
-          const disciplineName = s.course?.name || disciplineCode;
-          const classCode = (s as { section_code?: string }).section_code || s.id_ref;
-          const cardKey = `${disciplineCode}-${classCode}`;
-          const teachers = Array.isArray(s.teachers) ? s.teachers : [];
-          const timeCodes = Array.isArray(s.time_codes) ? s.time_codes : [];
-          const formattedSchedules = formatTimeCodes(timeCodes);
-          const course = courses?.find((c) => c.code === disciplineCode);
-          const conflicts = getConflictsForSection(s);
-          const conflictCodes = getConflictCodes(conflicts);
-          const currentStatus = getDisciplineStatus(disciplineCode);
+        {[...groupedSections.entries()].map(([baseCode, sections]) => {
+          const disciplineCodes = sections.map(s => 
+            s.course?.code || (s as { course_code?: string }).course_code || ''
+          );
+          const disciplineName = resolveBlockCourseName(
+            disciplineCodes[0],
+            coursesIndexByCode,
+            coursesByCode.get(baseCode)?.name ?? coursesByCode.get(disciplineCodes[0])?.name ?? baseCode
+          );
+          const cardKey = baseCode;
+          
+          // Get the status from any of the codes (they should all be the same)
+          const currentStatus = disciplineCodes.reduce((acc, code) => 
+            acc || getDisciplineStatus(code), 
+            undefined as DisciplineStatus | undefined
+          );
           const isUnresolved = pendingTransition && !currentStatus;
           const isStatusExpanded = expandedStatus.has(cardKey) || isUnresolved;
+          
+          // Get the course (try base code first, then the first code in the group)
+          const course = courses?.find((c) => c.code === baseCode) || 
+                         courses?.find((c) => c.code === disciplineCodes[0]);
+          const workload = (course as any)?.workload;
+          
+          // Get all conflicts and conflict codes for all sections
+          const allConflicts = sections.flatMap(s => getConflictsForSection(s));
+          const conflictCodes = getConflictCodes(allConflicts);
 
           return (
             <div
@@ -127,42 +164,88 @@ export function ScheduleSummary() {
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-primary">{disciplineCode}</span>
-                      {(course as any)?.workload && (
-                        <span className="text-[10px] text-muted-foreground">{(course as any).workload}h</span>
+                      <span className="text-xs font-semibold text-primary">{baseCode}</span>
+                      {workload && (
+                        <span className="text-[10px] text-muted-foreground">{workload}h</span>
                       )}
                     </div>
                     <p className="font-medium text-card-foreground text-sm sm:text-base leading-snug mt-0.5">
                       {disciplineName}
                     </p>
 
-                    <div className="mt-2 space-y-1.5">
-                      <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                        <Users className="w-3 h-3 mt-0.5 shrink-0" />
-                        <span className="break-words">{teachers.length > 0 ? teachers.join(', ') : 'Professor(es) a definir'}</span>
-                      </div>
-                      <div className="flex items-start gap-2 text-xs text-muted-foreground">
-                        <Clock className="w-3 h-3 mt-0.5 shrink-0" />
-                        {formattedSchedules.length > 0 ? (
-                          <div className="grid gap-1" style={{ gridTemplateColumns: formattedSchedules.length <= 4 ? 'repeat(4, 1fr)' : (formattedSchedules.length <= 6 ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)') }}>
-                            {formattedSchedules.map((schedule, idx) => {
-                              const [day, time] = schedule.split(' ');
-                              return (
-                                <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono text-center min-h-[40px] flex flex-col items-center justify-center">
-                                  <span className="font-semibold">{day}</span>
-                                  <span className="text-[10px]">{time}</span>
-                                </span>
-                              );
-                            })}
+                    <div className="mt-3 space-y-3">
+                      {sections.map((s, sectionIdx) => {
+                        const disciplineCode = s.course?.code || (s as { course_code?: string }).course_code || '';
+                        const classCode = (s as { section_code?: string }).section_code || s.id_ref;
+                        const variantLabel = getBlockCourseVariantLabel(disciplineCode, coursesByCode);
+                        const teachers = Array.isArray(s.teachers) ? s.teachers : [];
+                        const timeCodes = Array.isArray(s.time_codes) ? s.time_codes : [];
+                        const formattedSchedules = formatTimeCodes(timeCodes);
+                        
+                        return (
+                          <div key={`${disciplineCode}-${classCode}`} className="border rounded-lg bg-background p-3">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  {isBlockCourseCode(disciplineCode) && (
+                                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-primary/10 text-primary">
+                                      {variantLabel}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {disciplineCode} • {classCode}
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 space-y-1.5">
+                                  <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                                    <Users className="w-3 h-3 mt-0.5 shrink-0" />
+                                    <span className="break-words">{teachers.length > 0 ? teachers.join(', ') : 'Professor(es) a definir'}</span>
+                                  </div>
+                                  <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                                    <Clock className="w-3 h-3 mt-0.5 shrink-0" />
+                                    {formattedSchedules.length > 0 ? (
+                                      <div className="grid gap-1" style={{ gridTemplateColumns: formattedSchedules.length <= 4 ? 'repeat(4, 1fr)' : (formattedSchedules.length <= 6 ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)') }}>
+                                        {formattedSchedules.map((schedule, idx) => {
+                                          const [day, time] = schedule.split(' ');
+                                          return (
+                                            <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono text-center min-h-[40px] flex flex-col items-center justify-center">
+                                              <span className="font-semibold">{day}</span>
+                                              <span className="text-[10px]">{time}</span>
+                                            </span>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <span>Horário a definir</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-1 shrink-0">
+                                <button
+                                  onClick={() => { if (course) setSelectedDiscipline(course as Course); }}
+                                  className="p-2 rounded-lg text-muted-foreground hover:bg-accent transition-all"
+                                  aria-label="Mais informações"
+                                >
+                                  <Info className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => toggleSection(s, allSections)}
+                                  className="p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
+                                  aria-label="Remover turma"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        ) : (
-                          <span>Horário a definir</span>
-                        )}
-                      </div>
+                        );
+                      })}
                     </div>
 
                     {conflictCodes.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
+                      <div className="flex flex-wrap gap-1 mt-3">
                         {conflictCodes.map((code) => (
                           <span
                             key={code}
@@ -174,23 +257,6 @@ export function ScheduleSummary() {
                         ))}
                       </div>
                     )}
-                  </div>
-
-                  <div className="flex flex-col gap-1 shrink-0">
-                    <button
-                      onClick={() => { if (course) setSelectedDiscipline(course as Course); }}
-                      className="p-2 rounded-lg text-muted-foreground hover:bg-accent transition-all"
-                      aria-label="Mais informações"
-                    >
-                      <Info className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => toggleSection(s)}
-                      className="p-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all"
-                      aria-label="Remover turma"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -227,7 +293,7 @@ export function ScheduleSummary() {
                           return (
                             <button
                               key={status}
-                              onClick={() => handleStatusClick(disciplineCode, status)}
+                              onClick={() => handleStatusClick(disciplineCodes, status)}
                               className={cn(
                                 'flex flex-col sm:flex-row items-center justify-center gap-1 px-2 py-2 rounded-lg border text-[10px] sm:text-xs font-medium transition-all',
                                 isActive ? config.activeClass : 'border-border text-muted-foreground hover:bg-muted'

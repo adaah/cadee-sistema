@@ -1112,7 +1112,7 @@ const Planejador = () => {
             section={selectedSection}
             onClose={() => setSelectedSection(null)}
             onRemove={() => {
-              toggleSection(selectedSection);
+              toggleSection(selectedSection, allSections);
               setSelectedSection(null);
             }}
             onCourseClick={handleShowSectionsNoFilters}
@@ -1140,8 +1140,11 @@ function SectionDetailModal({
   const { data: courseDetail } = useCourseByCode(detailCourseCode);
   const courseName = courseDetail?.name || (section as any)?.course?.name || 'Nome não disponível';
   
+  // Buscar todas as seções para encontrar correspondentes de blocos
+  const { data: allSections = [] } = useSections();
+  
   // Buscar turmas pelo código do bloco (ex.: MATB59.1)
-  const { data: allSections = [] } = useCourseSections(courseCode);
+  const { data: courseSections = [] } = useCourseSections(courseCode);
   
   // Buscar todas as disciplinas para pré-requisitos e disciplinas liberadas
   const { data: allCourses = [] } = useCourses();
@@ -1533,6 +1536,7 @@ function SectionDetailModal({
 // Componente para exibir card de uma seção
 function SectionCard({ section, isCurrentSection = false }: { section: Section; isCurrentSection?: boolean }) {
   const { toggleSection, hasSectionOnCourse, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
+  const { data: allSections = [] } = useSections();
   const { myPrograms } = useMyPrograms();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
   
@@ -1585,7 +1589,7 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
           <Button
             size="sm"
             variant={isSelected ? "destructive" : "default"}
-            onClick={() => toggleSection(section)}
+            onClick={() => toggleSection(section, allSections)}
             className="text-xs"
           >
             {isSelected ? 'Remover' : isOtherSectionOfSameCourse ? 'Substituir' : 'Adicionar'}
@@ -1643,6 +1647,7 @@ function SectionsList({
   horariosRestritos: string[];
 }) {
   const { data: sections = [], isLoading } = useCourseSections(courseCode);
+  const { data: allSections = [] } = useSections();
   const detailCourseCode = isBlockCourseCode(courseCode) ? getBlockCourseBaseCode(courseCode) : courseCode;
   const { toggleSection, hasSectionOnCourse, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
   const { myPrograms } = useMyPrograms();
@@ -1940,7 +1945,7 @@ function SectionsList({
                 <Button
                   size="sm"
                   className="mt-2 md:mt-0 px-4 py-2 text-xs md:text-sm flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow"
-                  onClick={() => toggleSection(section)}
+                  onClick={() => toggleSection(section, allSections)}
                   disabled={isSelected && hasConflict}
                   variant={isSelected ? "destructive" : "default"}
                 >

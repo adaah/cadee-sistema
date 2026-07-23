@@ -107,6 +107,7 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   const detailCode = isBlockCourseCode(currentCode) ? getBlockCourseBaseCode(currentCode) : currentCode;
 
   const { data: sections = [], isLoading } = useCourseSections(currentCode);
+  const { data: allSections = [] } = useSections();
   const { data: currentDetail } = useCourseByCode(detailCode);
   const { data: allCourses = [] } = useCourses();
   const currentName = currentDetail?.name ?? discipline.name;
@@ -168,7 +169,7 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
 
   const handleAddClass = (section: Section) => {
     const isAlreadyAdded = mySections.some((s) => s.id_ref === section.id_ref);
-    toggleSection(section);
+    toggleSection(section, allSections);
     toast({
       title: isAlreadyAdded ? 'Turma removida' : 'Turma adicionada!',
       description: `${currentName} (${(section as any).section_code || section.id_ref}) ${isAlreadyAdded ? 'removida da' : 'foi adicionada à'} sua lista.`,

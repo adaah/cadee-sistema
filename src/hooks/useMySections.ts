@@ -4,6 +4,7 @@ import { produce } from 'immer';
 import type { Section } from '@/services/api';
 import { useMemo } from 'react';
 import { getSpplitedCode } from '@/lib/schedule';
+import { findCorrespondingBlockSections } from '@/lib/blockCourses';
 
 // Persisted sections selected by the user
 const mySectionsAtom = atomWithStorage<Section[]>('mySections', []);
@@ -11,30 +12,43 @@ const mySectionsAtom = atomWithStorage<Section[]>('mySections', []);
 export function useMySections() {
   const [mySections, setMySections] = useAtom(mySectionsAtom);
 
-  const toggleSection = (aSection: Section) => {
+  const toggleSection = (aSection: Section, allSections: Section[] = []) => {
     setMySections((current) => {
       const next = produce(current, (draft) => {
-        // Verifica se já existe uma turma da mesma disciplina
-        const courseCode = aSection.course?.code || (aSection as any)?.course_code;
-        const existingSectionIndex = draft.findIndex((s) => {
-          const sCourseCode = s.course?.code || (s as any)?.course_code;
-          return sCourseCode === courseCode;
-        });
+        // First, find all corresponding block sections
+        const correspondingSections = findCorrespondingBlockSections(aSection, allSections);
         
-        if (existingSectionIndex >= 0) {
-          const existingSection = draft[existingSectionIndex];
+        // Function to toggle a single section
+        const toggleSingleSection = (section: Section) => {
+          const courseCode = section.course?.code || (section as any)?.course_code;
+          const existingSectionIndex = draft.findIndex((s) => {
+            const sCourseCode = s.course?.code || (s as any)?.course_code;
+            return sCourseCode === courseCode;
+          });
           
-          // Se é a mesma turma, remove ela
-          if (existingSection.id_ref === aSection.id_ref) {
-            draft.splice(existingSectionIndex, 1);
+          if (existingSectionIndex >= 0) {
+            const existingSection = draft[existingSectionIndex];
+            
+            // Se é a mesma turma, remove ela
+            if (existingSection.id_ref === section.id_ref) {
+              draft.splice(existingSectionIndex, 1);
+            } else {
+              // Se é outra turma da mesma disciplina, substitui
+              draft[existingSectionIndex] = section;
+            }
           } else {
-            // Se é outra turma da mesma disciplina, substitui
-            draft[existingSectionIndex] = aSection;
+            // Se não existe nenhuma turma desta disciplina, adiciona
+            draft.push(section);
           }
-        } else {
-          // Se não existe nenhuma turma desta disciplina, adiciona
-          draft.push(aSection);
-        }
+        };
+
+        // Toggle the main section first
+        toggleSingleSection(aSection);
+
+        // Then toggle all corresponding sections
+        correspondingSections.forEach(correspondingSection => {
+          toggleSingleSection(correspondingSection);
+        });
       });
       return next;
     });

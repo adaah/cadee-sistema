@@ -1,3 +1,5 @@
+import type { Section } from '@/services/api';
+
 const BLOCK_COURSE_SUFFIX = /\.\d+$/;
 
 export function isBlockCourseCode(code: string): boolean {
@@ -87,4 +89,41 @@ export function groupDisciplinesByBlock<T extends { code: string; name?: string;
   }
 
   return Array.from(groups.values()).sort((a, b) => a.baseCode.localeCompare(b.baseCode));
+}
+
+/**
+ * Given a section and all available sections, finds all corresponding sections
+ * from the same block course group that should be added/removed together.
+ * Corresponding sections are those that share the same base code (e.g., MATB59)
+ * and have the same teacher(s).
+ */
+export function findCorrespondingBlockSections(
+  section: Section,
+  allSections: Section[]
+): Section[] {
+  const courseCode = section.course?.code;
+  if (!courseCode || !isBlockCourseCode(courseCode)) {
+    return [];
+  }
+
+  const baseCode = getBlockCourseBaseCode(courseCode);
+  const teachers = section.teachers ?? [];
+
+  // Find all sections that:
+  // 1. Are from the same block group (same base code)
+  // 2. Have the exact same teachers (order doesn't matter)
+  // 3. Are not the original section
+  return allSections.filter(s => {
+    const sCourseCode = s.course?.code;
+    if (!sCourseCode) return false;
+    if (s.id_ref === section.id_ref) return false;
+    if (getBlockCourseBaseCode(sCourseCode) !== baseCode) return false;
+
+    const sTeachers = s.teachers ?? [];
+    if (teachers.length !== sTeachers.length) return false;
+
+    // Check if all teachers are the same (order agnostic)
+    const teacherSet = new Set(teachers);
+    return sTeachers.every(t => teacherSet.has(t));
+  });
 }
