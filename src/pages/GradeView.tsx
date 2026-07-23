@@ -17,7 +17,7 @@ import { useMyPrograms } from "@/hooks/useMyPrograms";
 import { useToast } from "@/hooks/use-toast";
 import { ScheduleGrid } from "@/components/planner/ScheduleGrid";
 import { Course, Section } from "@/services/api";
-import { useCourseByCode, useCourseSections, useCourses } from "@/hooks/useApi";
+import { useCourseByCode, useCourseSections, useCourses, useSections } from "@/hooks/useApi";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
@@ -88,6 +88,7 @@ interface SavedGrade {
 
 const GradeView = () => {
   const { mySections, clearSections, toggleSection, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
+  const { data: allSections = [] } = useSections();
   const { courses } = useMyCourses();
   const { myPrograms } = useMyPrograms();
   const [savedGrades, setSavedGrades] = useState<SavedGrade[]>([]);
@@ -408,7 +409,7 @@ const GradeView = () => {
           section={selectedSection}
           onClose={() => setSelectedSection(null)}
           onRemove={() => {
-            toggleSection(selectedSection);
+            toggleSection(selectedSection, allSections);
             setSelectedSection(null);
           }}
           onCourseClick={() => {}}
@@ -422,6 +423,7 @@ const GradeView = () => {
 // Componente para o card de seção no modal
 function SectionCard({ section, isCurrentSection = false }: { section: Section; isCurrentSection?: boolean }) {
   const { getConflictsForSection, toggleSection, hasSection, getSectionForCourse } = useMySections();
+  const { data: allSections = [] } = useSections();
   
   const currentSectionOfCourse = getSectionForCourse((section as any)?.course?.code || (section as any)?.course_code || '');
   const isActuallyCurrentSection = currentSectionOfCourse?.id_ref === section.id_ref;
@@ -471,7 +473,7 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
           <Button
             size="sm"
             variant={isSelected ? "destructive" : "default"}
-            onClick={() => toggleSection(section)}
+            onClick={() => toggleSection(section, allSections)}
             className="text-xs"
           >
             {isSelected ? 'Remover' : isOtherSectionOfSameCourse ? 'Substituir' : 'Adicionar'}
@@ -526,7 +528,8 @@ function SectionDetailModal({
   const detailCourseCode = isBlockCourseCode(courseCode) ? getBlockCourseBaseCode(courseCode) : courseCode;
   const { data: courseDetail } = useCourseByCode(detailCourseCode);
   const courseName = courseDetail?.name || (section as any)?.course?.name || 'Nome não disponível';
-  const { data: allSections = [] } = useCourseSections(courseCode);
+  const { data: allSections = [] } = useSections();
+  const { data: courseSections = [] } = useCourseSections(courseCode);
   const { data: allCourses = [] } = useCourses();
   
   const unlockedCourses = useMemo(() => {
@@ -544,7 +547,7 @@ function SectionDetailModal({
     }).slice(0, 5);
   }, [courseCode, allCourses]);
   
-  const otherSections = allSections.filter(s => s.id_ref !== section.id_ref);
+  const otherSections = courseSections.filter(s => s.id_ref !== section.id_ref);
   
   const [openPrereq, setOpenPrereq] = useState(false);
   const [openCoreq, setOpenCoreq] = useState(false);
