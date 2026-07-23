@@ -1,10 +1,11 @@
 import { useState, useMemo, useRef, memo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ScheduleGrid } from '@/components/planner/ScheduleGrid';
 import { SkeletonCard } from '@/components/ui/skeleton-card';
 import { useApp } from '@/contexts/AppContext';
 import { Course, Section } from '@/services/api';
-import { Clock, Users, Plus, BadgeInfo, AlertTriangle, AlertCircle, Star, Flame, Trash2, BookOpen, GraduationCap, School, Filter, X, Calendar, CheckCircle, Eye, Search, Loader2 } from 'lucide-react';
+import { Clock, Users, Plus, BadgeInfo, AlertTriangle, AlertCircle, Star, Flame, Trash2, BookOpen, GraduationCap, School, Filter, X, Calendar, CheckCircle, Eye, Search, Loader2, Layers } from 'lucide-react';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { cn, getReservedUnfilledBonus, getReservedUnfilledForTitles } from '@/lib/utils';
 import { useMyCourses } from "@/hooks/useMyCourses.ts";
@@ -24,6 +25,7 @@ import { useQueries } from '@tanstack/react-query';
 import { fetchProgramDetail } from '@/services/api';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { getBlockCourseBaseCode, getBlockCourseVariantLabel, groupDisciplinesByBlock, isBlockCourseCode, resolveBlockCourseName } from '@/lib/blockCourses';
 
 const diasSemana = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
 const mapSiglaParaNome = {
@@ -141,6 +143,74 @@ const DisciplineCard = memo(({ course, onClick }: { course: Course; onClick: (co
 
 DisciplineCard.displayName = 'DisciplineCard';
 
+const BlockDisciplineGroupCard = memo(({
+  group,
+  indexByCode,
+  onCourseClick,
+}: {
+  group: ReturnType<typeof groupDisciplinesByBlock>[number];
+  indexByCode: Map<string, { name?: string }>;
+  onCourseClick: (course: Course) => void;
+}) => {
+  const { completedDisciplines } = useApp();
+  const allCompleted = group.courses.every((c) => completedDisciplines.includes(c.code));
+  const isOffered = group.courses.some((c) => (c.level || '').includes('Ofertada'));
+
+  return (
+    <div
+      data-discipline-code={group.baseCode}
+      className="border rounded-lg overflow-hidden"
+    >
+      <div className="p-3 md:p-4 bg-muted/30 border-b">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-semibold text-xs md:text-sm mb-1 flex items-center gap-2 flex-wrap">
+              <span>{group.baseCode}</span>
+              {isOffered && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                  Ofertada
+                </Badge>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground line-clamp-2">{group.name}</div>
+          </div>
+          {allCompleted && (
+            <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5 shrink-0">
+              Cursada
+            </Badge>
+          )}
+        </div>
+        <Badge variant="secondary" className="text-xs mt-2">
+          {group.sections_count} turma{group.sections_count !== 1 ? 's' : ''}
+        </Badge>
+      </div>
+      <div className="divide-y">
+        {group.courses.map((course) => (
+          <button
+            key={course.code}
+            type="button"
+            data-discipline-code={course.code}
+            onClick={() => onCourseClick(course as Course)}
+            className="w-full p-3 md:px-4 md:py-3 flex items-center justify-between gap-3 text-left hover:bg-muted/50 transition-colors"
+          >
+            <div className="min-w-0">
+              <div className="text-xs md:text-sm font-medium">{course.code}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {getBlockCourseVariantLabel(course.code, indexByCode)}
+              </div>
+            </div>
+            <Badge variant="outline" className="text-xs shrink-0">
+              {course.sections_count ?? 0} turma{(course.sections_count ?? 0) !== 1 ? 's' : ''}
+            </Badge>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+BlockDisciplineGroupCard.displayName = 'BlockDisciplineGroupCard';
+
 // Componente de lista virtualizada para melhor performance
 const VirtualizedDisciplineList = memo(({ 
   courses, 
@@ -233,7 +303,7 @@ const Planejador = () => {
         const idx = indexByCode.get(c.code) as any;
         return {
           code: c.code,
-          name: idx?.name ?? c.name,
+          name: resolveBlockCourseName(c.code, indexByCode, c.name),
           level: typeof c.semester === 'number' ? `${c.semester}º Semestre` : (c.level ?? '').replace("Nível", "Semestre"),
           type: c.type,
           credits: c.credits,
@@ -350,7 +420,8 @@ const Planejador = () => {
       result = result.filter(course => {
         const codeNorm = normalizeText(course.code);
         const nameNorm = normalizeText(course.name);
-        return codeNorm.includes(term) || nameNorm.includes(term);
+        const baseNorm = normalizeText(getBlockCourseBaseCode(course.code));
+        return codeNorm.includes(term) || nameNorm.includes(term) || baseNorm.includes(term);
       });
     }
 
@@ -439,6 +510,16 @@ const Planejador = () => {
     currentTerm,
     currentTermSectionData,
   ]);
+
+  const indexByCode = useMemo(
+    () => new Map(coursesIndex.map((c) => [c.code, c])),
+    [coursesIndex]
+  );
+
+  const disciplinasAgrupadas = useMemo(
+    () => groupDisciplinesByBlock(disciplinasFiltradas, indexByCode),
+    [disciplinasFiltradas, indexByCode]
+  );
 
   const totalTurmasSemestre = useMemo(() => {
     if (!plannerCourses) return 0;
@@ -632,7 +713,7 @@ const Planejador = () => {
                   )}
                 </div>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border cursor-default">
-                  {disciplinasFiltradas.length} disciplinas • {totalTurmasSemestre} turmas
+                  {disciplinasAgrupadas.length} disciplinas • {totalTurmasSemestre} turmas
                 </span>
               </div>
 
@@ -677,7 +758,7 @@ const Planejador = () => {
                 <div className="grid grid-cols-1 gap-3 md:gap-4">
                   {isLoading ? (
                     [...Array(8)].map((_, i) => <SkeletonCard key={i} />)
-                  ) : disciplinasFiltradas?.length === 0 ? (
+                  ) : disciplinasAgrupadas.length === 0 ? (
                     <div className="col-span-full text-center py-8">
                       <p className="text-muted-foreground">Nenhuma disciplina encontrada</p>
                       {searchTerm && (
@@ -693,13 +774,22 @@ const Planejador = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-3 md:gap-4">
-                      {disciplinasFiltradas.map((course) => (
-                        <DisciplineCard 
-                          key={course.code}
-                          course={course}
-                          onClick={handleShowSections}
-                        />
-                      ))}
+                      {disciplinasAgrupadas.map((group) =>
+                        group.isBlockGroup ? (
+                          <BlockDisciplineGroupCard
+                            key={group.key}
+                            group={group}
+                            indexByCode={indexByCode}
+                            onCourseClick={handleShowSections}
+                          />
+                        ) : (
+                          <DisciplineCard
+                            key={group.courses[0].code}
+                            course={group.courses[0] as Course}
+                            onClick={handleShowSections}
+                          />
+                        )
+                      )}
                     </div>
                 )}
               </div>
@@ -736,9 +826,19 @@ const Planejador = () => {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="border rounded-lg overflow-hidden bg-card">
-                  <ScheduleGrid onSectionClick={(section) => setSelectedSection(section)} />
-                </div>
+                <>
+                  <div className="border rounded-lg overflow-hidden bg-card">
+                    <ScheduleGrid onSectionClick={(section) => setSelectedSection(section)} />
+                  </div>
+                  <div className="flex justify-center mt-4">
+                    <Link to="/grade">
+                      <Button variant="outline" size="sm" className="flex items-center gap-2">
+                        <Layers className="w-4 h-4" />
+                        Mais detalhes
+                      </Button>
+                    </Link>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1036,12 +1136,11 @@ function SectionDetailModal({
   onCourseClick: (course: Course) => void;
 }) {
   const courseCode = (section as any)?.course?.code || (section as any)?.course_code || '';
-  const courseName = (section as any)?.course?.name || 'Nome não disponível';
+  const detailCourseCode = isBlockCourseCode(courseCode) ? getBlockCourseBaseCode(courseCode) : courseCode;
+  const { data: courseDetail } = useCourseByCode(detailCourseCode);
+  const courseName = courseDetail?.name || (section as any)?.course?.name || 'Nome não disponível';
   
-  // Buscar detalhes da disciplina
-  const { data: courseDetail } = useCourseByCode(courseCode);
-  
-  // Buscar todas as turmas desta disciplina - apenas uma chamada
+  // Buscar turmas pelo código do bloco (ex.: MATB59.1)
   const { data: allSections = [] } = useCourseSections(courseCode);
   
   // Buscar todas as disciplinas para pré-requisitos e disciplinas liberadas
@@ -1544,6 +1643,7 @@ function SectionsList({
   horariosRestritos: string[];
 }) {
   const { data: sections = [], isLoading } = useCourseSections(courseCode);
+  const detailCourseCode = isBlockCourseCode(courseCode) ? getBlockCourseBaseCode(courseCode) : courseCode;
   const { toggleSection, hasSectionOnCourse, getConflictsForSection, hasSection, getSectionForCourse } = useMySections();
   const { myPrograms } = useMyPrograms();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
@@ -1614,7 +1714,7 @@ function SectionsList({
   }, [sectionsThisTerm, diasSelecionados, horariosSelecionados, diasRestritos, horariosRestritos]);
   
   // Buscar detalhes da disciplina para pré-requisitos e corequisitos
-  const { data: courseDetail } = useCourseByCode(courseCode);
+  const { data: courseDetail } = useCourseByCode(detailCourseCode);
   
   // Buscar todas as disciplinas para encontrar as que são liberadas por esta
   const { data: allCourses = [] } = useCourses();

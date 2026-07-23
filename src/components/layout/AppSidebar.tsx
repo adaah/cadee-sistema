@@ -1,4 +1,4 @@
-import { Home, BookOpen, Calendar, Settings, Sun, Moon, Github } from 'lucide-react';
+import { Home, BookOpen, Calendar, Settings, Sun, Moon, Github, Layers } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useApp } from '@/contexts/AppContext';
 import { cn } from '@/lib/utils';

@@ -1,5 +1,6 @@
 import type { Section } from '@/services/api';
 import type { Course } from '@/services/api';
+import { isBlockCourseCode, resolveBlockCourseName } from '@/lib/blockCourses';
 
 export type DisciplineStatus = 'approved' | 'failed' | 'dropped';
 
@@ -166,7 +167,9 @@ export function mergeProgramCoursesWithOffered(
     if (!isSectionOfferedToPrograms(section, programTitles)) continue;
 
     const idx = indexByCode.get(code);
-    const name = section.course?.name ?? idx?.name ?? code;
+    const name = isBlockCourseCode(code)
+      ? resolveBlockCourseName(code, indexByCode, section.course?.name)
+      : (section.course?.name ?? idx?.name ?? code);
 
     byCode.set(code, {
       code,

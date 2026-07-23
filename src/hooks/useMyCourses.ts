@@ -6,6 +6,7 @@ import type { Course } from '@/services/api';
 import type { ProgramDetail } from '@/services/api';
 import { fetchProgramDetail } from '@/services/api';
 import { useCourses } from '@/hooks/useApi';
+import { resolveBlockCourseName } from '@/lib/blockCourses';
 
 // Aggregates courses from all selected programs, running N parallel queries.
 export function useMyCourses() {
@@ -34,16 +35,17 @@ export function useMyCourses() {
       const list = Array.isArray(pd?.courses) ? pd.courses : [];
       return list.map((c: any) => {
         const idx = indexByCode.get(c.code) as any;
+        const courseName = resolveBlockCourseName(c.code, indexByCode, c.name);
+
         return {
           code: c.code,
-          name: idx?.name ?? c.name,
+          name: courseName,
           level: typeof c.semester === 'number' ? `${c.semester}º Semestre` : (c.level ?? '').replace("Nível", "Semestre"),
           type: c.type,
           credits: c.credits,
           workload: c.workload,
           // usa prerequisitos do programa; se não houver, usa do índice
           prerequisites: c.prerequisites ?? (idx as any)?.prerequisites ?? (idx as any)?.prereqs ?? (idx as any)?.prerequisite_codes,
-          // Enriquecimento a partir do índice
           sections_count: idx?.sections_count ?? 0,
           sections_url: idx?.sections_url,
           detail_url: idx?.detail_url,
