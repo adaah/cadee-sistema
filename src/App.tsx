@@ -12,6 +12,7 @@ import Index from "./pages/Index";
 import Disciplinas from "./pages/Disciplinas";
 import Planejador from "./pages/Planejador";
 import Configuracoes from "./pages/Configuracoes";
+import GradeView from "./pages/GradeView";
 import NotFound from "./pages/NotFound";
 import NoCourseSelected from "./pages/NoCourseSelected";
 
@@ -49,6 +50,10 @@ function AppContent() {
           <Route 
             path="/planejador" 
             element={hasCourseSelected ? <Planejador /> : <NoCourseSelected />} 
+          />
+          <Route 
+            path="/grade" 
+            element={hasCourseSelected ? <GradeView /> : <NoCourseSelected />} 
           />
           <Route 
             path="/configuracoes" 

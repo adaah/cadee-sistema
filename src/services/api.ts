@@ -181,7 +181,19 @@ export async function fetchCourseByCode(code: string): Promise<CourseDetail> {
 }
 
 export async function fetchSectionsByCourseCode(courseCode: string): Promise<Section[]> {
-  return axios.get<Section[]>(`${API_BASE_URL}/course/${courseCode}/sections.json`).then(getData)
+  try {
+    const sections = await axios
+      .get<Section[]>(`${API_BASE_URL}/course/${courseCode}/sections.json`)
+      .then(getData);
+    if (sections.length > 0) return sections;
+  } catch {
+    // Alguns blocos (ex.: MATB59.0) não têm endpoint próprio; usa índice global.
+  }
+
+  const allSections = await fetchSections();
+  return allSections.filter(
+    (section) => (section.course?.code || (section as { course_code?: string }).course_code) === courseCode
+  );
 }
 
 export function parseSigaaSchedule(raw: string): SectionSchedule[] {

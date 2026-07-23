@@ -1,6 +1,7 @@
 import { X, Check, ChevronDown, ChevronUp, Clock, Star } from 'lucide-react';
 import { Course, parseSigaaSchedule } from '@/services/api';
 import type { Section } from '@/services/api';
+import { getBlockCourseBaseCode, isBlockCourseCode } from '@/lib/blockCourses';
 import { useCourseSections, useCourseByCode, useCourses } from '@/hooks/useApi';
 import { useApp } from '@/contexts/AppContext';
 import { useMySections } from '@/hooks/useMySections';
@@ -103,9 +104,10 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   // Estado local para navegação dentro do drawer
   const [stack, setStack] = useState<{ code: string }[]>([{ code: discipline.code }]);
   const currentCode = stack[stack.length - 1]?.code || discipline.code;
+  const detailCode = isBlockCourseCode(currentCode) ? getBlockCourseBaseCode(currentCode) : currentCode;
 
   const { data: sections = [], isLoading } = useCourseSections(currentCode);
-  const { data: currentDetail } = useCourseByCode(currentCode);
+  const { data: currentDetail } = useCourseByCode(detailCode);
   const { data: allCourses = [] } = useCourses();
   const currentName = currentDetail?.name ?? discipline.name;
 
