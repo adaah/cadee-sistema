@@ -613,7 +613,7 @@ function SectionDetailModal({
           <div className="border rounded-lg p-4 bg-muted/30">
             <SectionHeader
               title="Turmas ofertadas para o curso"
-              count={allSections.length}
+              count={courseSections.length}
               open={openCurrentSections}
               onToggle={() => setOpenCurrentSections(!openCurrentSections)}
             />

@@ -12,10 +12,11 @@ interface DisciplineCardProps {
   onClick: () => void;
   available?: boolean;
   blocked?: boolean;
+  isSelected?: boolean;
   onRestrictedAction?: (type: 'completed' | 'favorite', course: Course) => void;
 }
 
-export function DisciplineCard({ discipline, onClick, available, blocked, onRestrictedAction }: DisciplineCardProps) {
+export function DisciplineCard({ discipline, onClick, available, blocked, isSelected, onRestrictedAction }: DisciplineCardProps) {
   const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus } = useApp();
   const { isSimplified } = useMode();
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
@@ -66,8 +67,9 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
         showCompletedStyles && "border-success/50 bg-success/5",
         showFailedStyles && "border-destructive/50 bg-destructive/5",
         showDroppedStyles && "border-border bg-muted/40 opacity-75",
-        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
-        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
+        isSelected && !showCompletedStyles && !showFailedStyles && !showDroppedStyles && "border-primary/50 bg-primary/5",
+        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && !isSelected && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
+        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && !isSelected && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
       )}
       onClick={onClick}
     >
@@ -81,6 +83,8 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
               ? "bg-destructive/10 text-destructive"
               : showDroppedStyles
               ? "bg-muted text-muted-foreground"
+              : isSelected
+              ? "bg-primary/10 text-primary"
               : showAvailable
               ? "bg-warning/10 text-warning"
               : showBlocked
@@ -151,7 +155,7 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
       <div className="mt-2 pt-1 border-t border-border">
         <div className="flex items-center justify-between">
           {/* Reserve space to avoid layout shift (empty component) */}
-          <div className="h-5 sm:h-6 flex items-center">
+          <div className="h-5 sm:h-6 flex items-center gap-2">
             <AnimatePresence mode="popLayout" initial={false}>
               {isCompleted && (
                 <motion.span
@@ -163,6 +167,18 @@ export function DisciplineCard({ discipline, onClick, available, blocked, onRest
                   className="inline-flex items-center px-2 py-0.5 rounded-md bg-success/10 text-success text-[10px] sm:text-xs font-medium"
                 >
                   Cursada
+                </motion.span>
+              )}
+              {!isCompleted && isSelected && (
+                <motion.span
+                  key="tag-selecionada"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] sm:text-xs font-medium"
+                >
+                  Selecionada
                 </motion.span>
               )}
             </AnimatePresence>

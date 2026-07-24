@@ -9,6 +9,7 @@ import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { Progress } from '@/components/ui/progress';
 import { getReservedUnfilledBonus, getReservedUnfilledForTitles } from '@/lib/utils';
 import { formatTimeCodes } from '@/lib/schedule';
+import { useCourses } from '@/hooks/useApi';
 
 interface SectionCardProps {
   section: Section;
@@ -20,6 +21,7 @@ interface SectionCardProps {
 export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: SectionCardProps) {
   const { hasSectionOnCourse, getConflictsForSection } = useMySections();
   const { completedDisciplines } = useApp();
+  const { data: coursesIndex = [] } = useCourses();
   const seatsCount = section.seats_count;
   const seatsAccepted = section.seats_accepted;
   const available = seatsCount - seatsAccepted;
@@ -42,6 +44,9 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
 
   // Compute time conflicts via helper
   const conflicts = getConflictsForSection(section);
+  
+  // Create a map of course codes to names for quick lookup
+  const coursesByCode = new Map(coursesIndex.map(c => [c.code, c.name]));
 
   return (
     <div
@@ -80,18 +85,30 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
             )}
             {/* Conflito */}
             {!isFull && conflicts.length > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground inline-flex items-center gap-1 cursor-default">
-                      <AlertTriangle className="w-3 h-3" /> Conflito
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div>Há choque de horário com outra turma selecionada.</div>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              (() => {
+                const currentCourseCode = section.course?.code;
+                const uniqueCodes = Array.from(new Set(
+                  conflicts
+                    .map((c) => c.section.course?.code)
+                    .filter((code): code is string => Boolean(code) && code !== currentCourseCode)
+                ));
+                return (
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {uniqueCodes.map((code) => {
+                      const name = coursesByCode.get(code) || code;
+                      return (
+                        <button
+                          key={`conf-${code}`}
+                          onClick={() => onNavigateCourse?.(code)}
+                          className="px-2 py-0.5 rounded text-xs font-medium bg-secondary text-secondary-foreground inline-flex items-center gap-1 hover:bg-accent transition-all border border-border"
+                        >
+                          <AlertTriangle className="w-3 h-3" /> Choque com {code} — {name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()
             )}
             {/* Poucas Vagas */}
             {!isFull && isAlmostFull && (
@@ -138,17 +155,6 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
                 </Tooltip>
               </TooltipProvider>
             )}
-            {/* Bônus Lixão oculto temporariamente
-            {(() => {
-              const bonus = getReservedUnfilledBonus(section);
-              if (bonus <= 0) return null;
-              return (
-                <span className="px-2 py-0.5 rounded text-xs font-medium bg-accent text-accent-foreground border border-border inline-flex items-center gap-1 cursor-default">
-                  <Trash2 className="w-3 h-3" /> Bônus Lixão ({bonus})
-                </span>
-              );
-            })()}
-            */}
           </div>
 
           {(() => {
@@ -203,30 +209,6 @@ export function SectionCard({ section, isAdded, onAdd, onNavigateCourse }: Secti
                 })()}
               </div>
             </div>
-
-            {(() => {
-              if (conflicts.length === 0) return null;
-              const currentCourseCode = section.course?.code;
-              const uniqueCodes = Array.from(new Set(
-                conflicts
-                  .map((c) => c.section.course?.code)
-                  .filter((code): code is string => Boolean(code) && code !== currentCourseCode)
-              ));
-              if (uniqueCodes.length === 0) return null;
-              return (
-                <div className="flex flex-wrap gap-2 mt-3">
-                  {uniqueCodes.map((code) => (
-                    <button
-                      key={`conf-${code}`}
-                      onClick={() => onNavigateCourse?.(code)}
-                      className="px-2 py-0.5 rounded text-xs font-medium bg-accent text-accent-foreground hover:bg-accent/80 border border-border"
-                    >
-                      {code}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
           </div>
         </div>
 

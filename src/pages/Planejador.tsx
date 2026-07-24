@@ -102,7 +102,17 @@ const parseTimeCodes = (timeCodes: string[]): Array<{ dia: string; horarioInicio
 };
 
 // Componente memoizado para card de disciplina - otimiza performance
-const DisciplineCard = memo(({ course, onClick }: { course: Course; onClick: (course: Course) => void }) => {
+const DisciplineCard = memo(({ 
+  course, 
+  onClick,
+  isSelected = false,
+  conflictCodes = []
+}: { 
+  course: Course; 
+  onClick: (course: Course) => void;
+  isSelected?: boolean;
+  conflictCodes?: string[];
+}) => {
   const { completedDisciplines } = useApp();
   const isCompleted = completedDisciplines.includes(course.code);
   const isOffered = (course.level || '').includes('Ofertada');
@@ -112,15 +122,22 @@ const DisciplineCard = memo(({ course, onClick }: { course: Course; onClick: (co
       key={course.code}
       data-discipline-code={course.code}
       onClick={() => onClick(course)}
-      className="p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors relative"
+      className={`p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors relative ${
+        isSelected ? 'border-primary ring-1 ring-primary/50 bg-primary/5' : ''
+      }`}
     >
-      {isCompleted && (
-        <div className="absolute top-2 right-2">
+      <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+        {isCompleted && (
           <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5">
             Cursada
           </Badge>
-        </div>
-      )}
+        )}
+        {conflictCodes.length > 0 && conflictCodes.map((code) => (
+          <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5">
+            Choque com {code}
+          </Badge>
+        ))}
+      </div>
       <div className="font-semibold text-xs md:text-sm mb-1 flex items-center gap-2 flex-wrap">
         <span>{course.code}</span>
         {isOffered && (
@@ -147,10 +164,14 @@ const BlockDisciplineGroupCard = memo(({
   group,
   indexByCode,
   onCourseClick,
+  isSelected = false,
+  conflictCodes = []
 }: {
   group: ReturnType<typeof groupDisciplinesByBlock>[number];
   indexByCode: Map<string, { name?: string }>;
   onCourseClick: (course: Course) => void;
+  isSelected?: boolean;
+  conflictCodes?: string[];
 }) => {
   const { completedDisciplines } = useApp();
   const allCompleted = group.courses.every((c) => completedDisciplines.includes(c.code));
@@ -159,7 +180,9 @@ const BlockDisciplineGroupCard = memo(({
   return (
     <div
       data-discipline-code={group.baseCode}
-      className="border rounded-lg overflow-hidden"
+      className={`border rounded-lg overflow-hidden ${
+        isSelected ? 'border-primary ring-1 ring-primary/50' : ''
+      }`}
     >
       <div className="p-3 md:p-4 bg-muted/30 border-b">
         <div className="flex items-start justify-between gap-2">
@@ -174,11 +197,18 @@ const BlockDisciplineGroupCard = memo(({
             </div>
             <div className="text-xs text-muted-foreground line-clamp-2">{group.name}</div>
           </div>
-          {allCompleted && (
-            <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5 shrink-0">
-              Cursada
-            </Badge>
-          )}
+          <div className="flex flex-col gap-1 items-end">
+            {allCompleted && (
+              <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5 shrink-0">
+                Cursada
+              </Badge>
+            )}
+            {conflictCodes.length > 0 && conflictCodes.map((code) => (
+              <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5 shrink-0">
+                Choque com {code}
+              </Badge>
+            ))}
+          </div>
         </div>
         <Badge variant="secondary" className="text-xs mt-2">
           {group.sections_count} turma{group.sections_count !== 1 ? 's' : ''}
@@ -349,6 +379,8 @@ const Planejador = () => {
   const { pendingTransition, planningTerm } = useSemesterTransition();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
   const [applyFiltersToSections, setApplyFiltersToSections] = useState(true);
+  const [selectedDisciplinesExpanded, setSelectedDisciplinesExpanded] = useState(true);
+  const [otherDisciplinesExpanded, setOtherDisciplinesExpanded] = useState(true);
 
   const hasActiveFilters = useMemo(() => (
     diasSelecionados.length > 0 ||
@@ -516,10 +548,84 @@ const Planejador = () => {
     [coursesIndex]
   );
 
+  const coursesByCode = useMemo(() => {
+    const map = new Map<string, { name?: string }>();
+    coursesIndex.forEach(c => map.set(c.code, c));
+    if (myCourses) {
+      myCourses.forEach(c => map.set(c.code, c));
+    }
+    return map;
+  }, [coursesIndex, myCourses]);
+
+  // Compute conflicts between selected sections, grouped by base course code
+  const conflictsByBaseCode = useMemo(() => {
+    const conflictsMap = new Map<string, Set<string>>();
+
+    // For each selected section, check conflicts with other selected sections
+    for (let i = 0; i < mySections.length; i++) {
+      const sectionA = mySections[i];
+      const codeA = sectionA.course?.code || (sectionA as any).course_code;
+      if (!codeA) continue;
+      const baseA = getBlockCourseBaseCode(codeA);
+
+      for (let j = i + 1; j < mySections.length; j++) {
+        const sectionB = mySections[j];
+        const codeB = sectionB.course?.code || (sectionB as any).course_code;
+        if (!codeB) continue;
+        const baseB = getBlockCourseBaseCode(codeB);
+
+        // Skip same base code (same block)
+        if (baseA === baseB) continue;
+
+        // Check if they conflict
+        const conflicts = getConflictsForSection(sectionA);
+        const hasConflict = conflicts.some(c => c.section.id_ref === sectionB.id_ref);
+
+        if (hasConflict) {
+          // Add conflict to both directions
+          if (!conflictsMap.has(baseA)) conflictsMap.set(baseA, new Set());
+          conflictsMap.get(baseA)!.add(baseB);
+
+          if (!conflictsMap.has(baseB)) conflictsMap.set(baseB, new Set());
+          conflictsMap.get(baseB)!.add(baseA);
+        }
+      }
+    }
+
+    return conflictsMap;
+  }, [mySections, getConflictsForSection]);
+
   const disciplinasAgrupadas = useMemo(
     () => groupDisciplinesByBlock(disciplinasFiltradas, indexByCode),
     [disciplinasFiltradas, indexByCode]
   );
+
+  // Separar disciplinas selecionadas (que estão na grade)
+  const { selectedGroups, nonSelectedGroups } = useMemo(() => {
+    const selected: DisciplineGroup[] = [];
+    const nonSelected: DisciplineGroup[] = [];
+    
+    for (const group of disciplinasAgrupadas) {
+      const hasSelected = group.courses.some(course => 
+        mySections.some(s => {
+          const sectionCode = s.course?.code || (s as any).course_code;
+          if (!sectionCode) return false;
+          // Verifica se o curso é o mesmo ou se é do mesmo bloco (código base)
+          const baseCodeOfCourse = getBlockCourseBaseCode(course.code);
+          const baseCodeOfSection = getBlockCourseBaseCode(sectionCode);
+          return baseCodeOfCourse === baseCodeOfSection;
+        })
+      );
+      
+      if (hasSelected) {
+        selected.push(group);
+      } else {
+        nonSelected.push(group);
+      }
+    }
+    
+    return { selectedGroups: selected, nonSelectedGroups: nonSelected };
+  }, [disciplinasAgrupadas, mySections]);
 
   const totalTurmasSemestre = useMemo(() => {
     if (!plannerCourses) return 0;
@@ -758,40 +864,110 @@ const Planejador = () => {
                 <div className="grid grid-cols-1 gap-3 md:gap-4">
                   {isLoading ? (
                     [...Array(8)].map((_, i) => <SkeletonCard key={i} />)
-                  ) : disciplinasAgrupadas.length === 0 ? (
-                    <div className="col-span-full text-center py-8">
-                      <p className="text-muted-foreground">Nenhuma disciplina encontrada</p>
-                      {searchTerm && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="mt-2"
-                          onClick={() => setSearchTerm('')}
-                        >
-                          Limpar busca
-                        </Button>
-                      )}
-                    </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-3 md:gap-4">
-                      {disciplinasAgrupadas.map((group) =>
-                        group.isBlockGroup ? (
-                          <BlockDisciplineGroupCard
-                            key={group.key}
-                            group={group}
-                            indexByCode={indexByCode}
-                            onCourseClick={handleShowSections}
-                          />
-                        ) : (
-                          <DisciplineCard
-                            key={group.courses[0].code}
-                            course={group.courses[0] as Course}
-                            onClick={handleShowSections}
-                          />
-                        )
+                    <>
+                      {/* Disciplinas Selecionadas */}
+                      {selectedGroups.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDisciplinesExpanded(!selectedDisciplinesExpanded)}
+                            className="flex items-center gap-2 mb-2 w-full text-left hover:text-foreground transition-colors"
+                          >
+                            <div className="h-px flex-1 bg-border"></div>
+                            <span className="text-xs font-medium text-muted-foreground px-2 flex items-center gap-1">
+                              Disciplinas Selecionadas
+                              {selectedDisciplinesExpanded ? (
+                                <ChevronUp className="w-3 h-3" />
+                              ) : (
+                                <ChevronDown className="w-3 h-3" />
+                              )}
+                            </span>
+                            <div className="h-px flex-1 bg-border"></div>
+                          </button>
+                          {selectedDisciplinesExpanded && selectedGroups.map((group) => {
+                            // Get conflicting base codes from our map
+                            const conflictBaseCodes = conflictsByBaseCode.get(group.key) || new Set<string>();
+                            const conflictCodes = Array.from(conflictBaseCodes);
+                            
+                            return group.isBlockGroup ? (
+                              <BlockDisciplineGroupCard
+                                key={group.key}
+                                group={group}
+                                indexByCode={indexByCode}
+                                onCourseClick={handleShowSections}
+                                isSelected={true}
+                                conflictCodes={conflictCodes}
+                              />
+                            ) : (
+                              <DisciplineCard
+                                key={group.courses[0].code}
+                                course={group.courses[0] as Course}
+                                onClick={handleShowSections}
+                                isSelected={true}
+                                conflictCodes={conflictCodes}
+                              />
+                            );
+                          })}
+                        </>
                       )}
-                    </div>
-                )}
+
+                      {/* Demais Disciplinas */}
+          {nonSelectedGroups.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setOtherDisciplinesExpanded(!otherDisciplinesExpanded)}
+                className="flex items-center gap-2 my-2 w-full text-left hover:text-foreground transition-colors"
+              >
+                <div className="h-px flex-1 bg-border"></div>
+                <span className="text-xs font-medium text-muted-foreground px-2 flex items-center gap-1">
+                  Outras Disciplinas
+                  {otherDisciplinesExpanded ? (
+                    <ChevronUp className="w-3 h-3" />
+                  ) : (
+                    <ChevronDown className="w-3 h-3" />
+                  )}
+                </span>
+                <div className="h-px flex-1 bg-border"></div>
+              </button>
+              {otherDisciplinesExpanded && nonSelectedGroups.map((group) =>
+                group.isBlockGroup ? (
+                  <BlockDisciplineGroupCard
+                    key={group.key}
+                    group={group}
+                    indexByCode={indexByCode}
+                    onCourseClick={handleShowSections}
+                  />
+                ) : (
+                  <DisciplineCard
+                    key={group.courses[0].code}
+                    course={group.courses[0] as Course}
+                    onClick={handleShowSections}
+                  />
+                )
+              )}
+            </>
+          )}
+
+                      {/* Se não houver nenhuma */}
+                      {selectedGroups.length === 0 && nonSelectedGroups.length === 0 && (
+                        <div className="col-span-full text-center py-8">
+                          <p className="text-muted-foreground">Nenhuma disciplina encontrada</p>
+                          {searchTerm && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="mt-2"
+                              onClick={() => setSearchTerm('')}
+                            >
+                              Limpar busca
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
               </div>
               </div>
             </div>
@@ -829,14 +1005,6 @@ const Planejador = () => {
                 <>
                   <div className="border rounded-lg overflow-hidden bg-card">
                     <ScheduleGrid onSectionClick={(section) => setSelectedSection(section)} />
-                  </div>
-                  <div className="flex justify-center mt-4">
-                    <Link to="/grade">
-                      <Button variant="outline" size="sm" className="flex items-center gap-2">
-                        <Layers className="w-4 h-4" />
-                        Mais detalhes
-                      </Button>
-                    </Link>
                   </div>
                 </>
               )}
@@ -1167,8 +1335,20 @@ function SectionDetailModal({
     }).slice(0, 5);
   }, [courseCode, allCourses]);
   
+  // Filtrar apenas turmas da mesma disciplina
+  const sameCourseSections = useMemo(() => {
+    const sectionCourseCode = (section as any)?.course?.code || (section as any)?.course_code;
+    const baseCode = getBlockCourseBaseCode(sectionCourseCode);
+    
+    return allSections.filter(s => {
+      const sCourseCode = (s as any)?.course?.code || (s as any)?.course_code;
+      const sBaseCode = getBlockCourseBaseCode(sCourseCode);
+      return sBaseCode === baseCode;
+    });
+  }, [allSections, section]);
+  
   // Filtrar outras turmas (excluindo a turma atual)
-  const otherSections = allSections.filter(s => s.id_ref !== section.id_ref);
+  const otherSections = sameCourseSections.filter(s => s.id_ref !== section.id_ref);
   
   // Estados para controlar seções recolhíveis
   const [openPrereq, setOpenPrereq] = useState(false);
@@ -1234,11 +1414,10 @@ function SectionDetailModal({
         </div>
         
         <div className="space-y-6">
-          {/* Turmas ofertadas para o curso - ABERTO POR PADRÃO */}
           <div className="border rounded-lg p-4 bg-muted/30">
             <SectionHeader
-              title="Turmas ofertadas para o curso"
-              count={allSections.length}
+              title="Turmas ofertadas"
+              count={sameCourseSections.length}
               open={openCurrentSections}
               onToggle={() => setOpenCurrentSections(!openCurrentSections)}
             />

@@ -10,6 +10,8 @@ import { useApp } from '@/contexts/AppContext';
 import { useCourses as useAllCourses, useSections } from '@/hooks/useApi';
 import { useMyCourses } from '@/hooks/useMyCourses';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
+import { useMySections } from '@/hooks/useMySections';
+import { getBlockCourseBaseCode } from '@/lib/blockCourses';
 import {Course, CourseApi, fetchCourseDetail} from '@/services/api';
 import {cn, getSemesterTitle} from '@/lib/utils';
 import { fuzzyFilter } from '@/lib/fuzzy';
@@ -29,6 +31,18 @@ const Disciplinas = () => {
   const { isSimplified, isFull, setMode } = useMode();
   const { isFavorite, favoriteCodes, toggleFavorite } = useFavoriteCourses();
   const { data: allCourses = [] } = useAllCourses();
+  const { mySections } = useMySections();
+
+  const selectedBaseCodes = useMemo(() => {
+    const set = new Set<string>();
+    for (const section of mySections) {
+      const code = section.course?.code || (section as any).course_code;
+      if (code) {
+        set.add(getBlockCourseBaseCode(code));
+      }
+    }
+    return set;
+  }, [mySections]);
 
   const selectedProgram = myPrograms.find(Boolean);
   
@@ -466,8 +480,8 @@ const Disciplinas = () => {
     ...(isFull ? [{ id: 'available', label: 'Disponíveis' }] as const : []),
     ...(!isSimplified ? [{ id: 'completed', label: 'Cursadas' }] as const : []),
     { id: 'not_completed', label: 'Não Concluídas' },
-    { id: 'favorites', label: 'Favoritos' },
     { id: 'offered', label: 'Ofertada' },
+    { id: 'selected', label: 'Selecionada nesse semestre' },
   ];
 
   // Build rules map for useFilter (excluding 'favorites' which controls layout)
@@ -475,9 +489,9 @@ const Disciplinas = () => {
     completed: (c: Course) => completedDisciplines.includes(c.code),
     not_completed: (c: Course) => !completedDisciplines.includes(c.code),
     available: (c: Course) => canTake(c.code),
-    favorites: (c: Course) => favoriteCodes.includes(c.code),
     offered: (c: Course) => (c.sections_count ?? 0) > 0,
-  }), [completedDisciplines, favoriteCodes]);
+    selected: (c: Course) => selectedBaseCodes.has(getBlockCourseBaseCode(c.code)),
+  }), [completedDisciplines, selectedBaseCodes]);
 
   const { isActive, isOnly, isAll, activeIds, apply, toggle } = useFilter<Course>({ rules });
 
@@ -716,6 +730,10 @@ const Disciplinas = () => {
               <div className="w-4 h-4 rounded bg-muted" />
               <span className="text-sm text-muted-foreground">Bloqueada</span>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-primary/50 border border-primary" />
+              <span className="text-sm text-muted-foreground">Selecionada nesse semestre</span>
+            </div>
           </div>
         )}
 
@@ -785,6 +803,7 @@ const Disciplinas = () => {
                             discipline={course}
                             available={true}
                             blocked={false}
+                            isSelected={selectedBaseCodes.has(getBlockCourseBaseCode(course.code))}
                             onClick={() => setSelectedDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />
@@ -886,6 +905,7 @@ const Disciplinas = () => {
                             discipline={course}
                             available={availableProp}
                             blocked={blockedProp}
+                            isSelected={selectedBaseCodes.has(getBlockCourseBaseCode(course.code))}
                             onClick={() => setSelectedDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />
