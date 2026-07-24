@@ -40,6 +40,9 @@ const Disciplinas = () => {
     for (const section of mySections) {
       const code = section.course?.code || (section as any).course_code;
       if (code) {
+        // Adiciona tanto o código original quanto o código base
+        // Isso garante que MATB59.0 no planejador marque tanto MATB59.0 quanto MATB59 como selecionados
+        set.add(code);
         set.add(getBlockCourseBaseCode(code));
       }
     }
@@ -113,12 +116,14 @@ const Disciplinas = () => {
 
     let cancelled = false;
     (async () => {
-      // Concorrência limitada: carrega em lotes de 10 com delay para não estourar o navegador
+      // Concorrência limitada: carrega em lotes de 5 com delay para não estourar o navegador
       const arr = Array.from(priorities).filter(c => !attemptedCodes.has(c));
-      for (let i = 0; i < arr.length; i += 10) {
+      for (let i = 0; i < arr.length; i += 5) {
         if (cancelled) return;
-        const chunk = arr.slice(i, i + 10);
+        const chunk = arr.slice(i, i + 5);
         await Promise.all(chunk.map(c => fetchDetailLazy(c).catch(() => null)));
+        // Pequeno delay entre lotes para não travar a UI
+        await new Promise(resolve => setTimeout(resolve, 50));
       }
     })();
     return () => { cancelled = true; };
@@ -260,7 +265,15 @@ const Disciplinas = () => {
   const isCourseSelected = useCallback((code: string): boolean => {
     if (hasAnyFailedOrDropped(code)) return false;
     const baseCode = getBlockCourseBaseCode(code);
-    return selectedBaseCodes.has(baseCode) || equivalentCodesToSelected.has(baseCode);
+    
+    // Verifica se o código base está diretamente selecionado
+    // Isso já cobre variantes de bloco (MATB59.0 -> MATB59)
+    if (selectedBaseCodes.has(baseCode)) return true;
+    
+    // Verifica equivalentes (apenas as já carregadas no cache)
+    if (equivalentCodesToSelected.has(baseCode)) return true;
+    
+    return false;
   }, [selectedBaseCodes, equivalentCodesToSelected, hasAnyFailedOrDropped]);
 
   const isCourseCompleted = useCallback((code: string): boolean => {
@@ -315,8 +328,18 @@ const Disciplinas = () => {
 
   // Toggle completed for a single course (síncrono, não usa equivalentes)
   const handleToggleCompletedSingle = useCallback((code: string) => {
-    toggleCompletedDiscipline(code);
-  }, [toggleCompletedDiscipline]);
+    const currentlyCompleted = completedDisciplines.includes(code) || getDisciplineStatus(code) === 'approved';
+    if (currentlyCompleted) {
+      if (completedDisciplines.includes(code)) {
+        toggleCompletedDiscipline(code);
+      } else if (getDisciplineStatus(code) === 'approved') {
+        clearDisciplineStatus(code);
+      }
+    } else {
+      toggleCompletedDiscipline(code);
+      setDisciplineStatus(code, 'approved');
+    }
+  }, [completedDisciplines, getDisciplineStatus, toggleCompletedDiscipline, clearDisciplineStatus, setDisciplineStatus]);
 
   const selectedProgram = myPrograms.find(Boolean);
   
@@ -583,6 +606,7 @@ const Disciplinas = () => {
   const allCoursesByCode = useMemo(() => new Map(allCourses.map((c) => [c.code, c])), [allCourses]);
 
   // Prefetch prereqs from course detail for courses without prereqs info
+  // Otimizado: busca apenas quando necessário (lazy loading) e em lotes menores
   useEffect(() => {
     const missing = courses
       .filter((c) => getPrereqCodes(c).length === 0 && !prereqCache.has(c.code) && (c as any).detail_url)
@@ -592,44 +616,50 @@ const Disciplinas = () => {
     setIsPrereqsLoading(true);
     (async () => {
       const updates = new Map(prereqCache);
-      for (const item of missing) {
-        try {
-          const detail = await fetchCourseDetail(item.url);
-          const prereqs = (detail as any)?.prerequisites ?? [];
-          
-          // Processa múltiplas opções de pré-requisitos
-          if (Array.isArray(prereqs) && prereqs.length > 0) {
-            // Verifica se é array de arrays (múltiplas opções)
-            if (Array.isArray(prereqs[0])) {
-              // Já está no formato correto: array de arrays
-              const options = prereqs.map((option: any[]) => 
-                option.map(pr => pr.code || (typeof pr === 'string' ? pr : ''))
-              ).filter((codes: string[]) => codes.length > 0);
-              if (options.length > 0) {
-                updates.set(item.code, options);
+      
+      // Processa em lotes de 5 para não sobrecarregar
+      for (let i = 0; i < missing.length; i += 5) {
+        const chunk = missing.slice(i, i + 5);
+        await Promise.all(chunk.map(async (item) => {
+          try {
+            const detail = await fetchCourseDetail(item.url);
+            const prereqs = (detail as any)?.prerequisites ?? [];
+            
+            // Processa múltiplas opções de pré-requisitos
+            if (Array.isArray(prereqs) && prereqs.length > 0) {
+              // Verifica se é array de arrays (múltiplas opções)
+              if (Array.isArray(prereqs[0])) {
+                // Já está no formato correto: array de arrays
+                const options = prereqs.map((option: any[]) => 
+                  option.map(pr => pr.code || (typeof pr === 'string' ? pr : ''))
+                ).filter((codes: string[]) => codes.length > 0);
+                if (options.length > 0) {
+                  updates.set(item.code, options);
+                } else {
+                  updates.set(item.code, []);
+                }
               } else {
-                // Se options ficou vazio, set como array vazio para indicar que não tem pré-req
-                updates.set(item.code, []);
+                // É uma lista simples, converte para formato de opções
+                const codes = getPrereqCodes({ prerequisites: prereqs } as any);
+                if (codes.length > 0) {
+                  updates.set(item.code, [codes]);
+                } else {
+                  updates.set(item.code, []);
+                }
               }
             } else {
-              // É uma lista simples, converte para formato de opções
-              const codes = getPrereqCodes({ prerequisites: prereqs } as any);
-              if (codes.length > 0) {
-                updates.set(item.code, [codes]);
-              } else {
-                // Se não encontrou códigos, set como array vazio para indicar que não tem pré-req
-                updates.set(item.code, []);
-              }
+              updates.set(item.code, []);
             }
-          } else {
-            // Não tem pré-requisitos ou formato inválido
-            updates.set(item.code, []);
+          } catch (e) {
+            console.warn('Falha ao buscar pré-requisitos para', item.code, e);
+            updates.set(item.code, []); // Marca como tentado mesmo com erro
           }
-        } catch (e) {
-          console.warn('Falha ao buscar pré-requisitos para', item.code, e);
-        }
+        }));
+        
+        // Atualiza o cache após cada lote para mostrar progresso
+        setPrereqCache(new Map(updates));
       }
-      setPrereqCache(updates);
+      
       setIsPrereqsLoading(false);
       setShowLoadComplete(true);
       setTimeout(() => setShowLoadComplete(false), 2000);
@@ -1091,7 +1121,7 @@ const Disciplinas = () => {
                             isCompleted={isCourseCompleted(course.code)}
                             isFailed={getDisciplineStatus(course.code) === 'failed'}
                             isDropped={getDisciplineStatus(course.code) === 'dropped'}
-                            onToggleCompleted={handleToggleCompletedForAllEquivalents}
+                            onToggleCompleted={handleToggleCompletedSingle}
                             onClick={() => openDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />
@@ -1197,7 +1227,7 @@ const Disciplinas = () => {
                             isCompleted={isCourseCompleted(course.code)}
                             isFailed={getDisciplineStatus(course.code) === 'failed'}
                             isDropped={getDisciplineStatus(course.code) === 'dropped'}
-                            onToggleCompleted={handleToggleCompletedForAllEquivalents}
+                            onToggleCompleted={handleToggleCompletedSingle}
                             onClick={() => openDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />

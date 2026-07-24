@@ -169,12 +169,14 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   }, [currentCode]);
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
 
-  // Busca bidirecional de equivalentes: para equivalentes da currentCode, precisa também checar o caminho inverso
-  // Primeiro, pega todos os códigos únicos já presentes (currentCode + equivalentes no currentDetail + allCourses)
+  // Busca bidirecional de equivalentes: apenas equivalentes diretos + inversos relevantes
+  // Otimizado para não buscar TODOS os cursos do sistema
   const relatedCodesForEquiv = useMemo(() => {
     const set = new Set<string>();
     set.add(currentCode);
     set.add(detailCode);
+    
+    // Adiciona equivalentes diretos do currentDetail
     if (currentDetail?.equivalences) {
       for (const grp of currentDetail.equivalences) {
         for (const eq of grp) {
@@ -182,15 +184,18 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
         }
       }
     }
-    for (const c of allCourses) set.add(c.code);
+    
+    // Busca inversa limitada: apenas cursos que têm currentCode como equivalente
+    // Para evitar buscar todos os cursos, buscamos apenas os equivalentes diretos
+    // A busca inversa será feita sob demanda quando necessário
     return Array.from(set);
-  }, [currentCode, detailCode, currentDetail, allCourses]);
+  }, [currentCode, detailCode, currentDetail]);
 
   const relatedCourseDetails = useQueries({
     queries: relatedCodesForEquiv.map(code => ({
       queryKey: ['course-by-code', code],
       queryFn: () => fetchCourseByCode(code),
-      enabled: !!code,
+      enabled: !!code && openEquiv, // Só busca quando a seção de equivalentes está aberta
       staleTime: 1000 * 60 * 60,
       gcTime: 1000 * 60 * 60 * 24,
     })),
