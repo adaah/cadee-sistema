@@ -46,10 +46,22 @@ const onboardedAtom = atomWithStorage<boolean>('isOnboarded', false);
 
 const toggleCompletedDisciplineAtom = atom(null, (get, set, code: string) => {
   const prev = get(completedDisciplinesAtom);
-  const next = prev.includes(code)
+  const isAlreadyCompleted = prev.includes(code);
+  const next = isAlreadyCompleted
     ? prev.filter((c) => c !== code)
     : [...prev, code];
   set(completedDisciplinesAtom, next);
+
+  // If unmarking as completed, also clear the discipline status
+  if (isAlreadyCompleted) {
+    const statuses = { ...get(disciplineStatusesAtom) };
+    delete statuses[code];
+    set(disciplineStatusesAtom, statuses);
+  } else {
+    // If marking as completed, also set status to approved
+    const statuses = { ...get(disciplineStatusesAtom), [code]: 'approved' as DisciplineStatus };
+    set(disciplineStatusesAtom, statuses);
+  }
 });
 
 const toggleThemeAtom = atom(null, (get, set) => {

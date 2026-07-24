@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { Search, AlertCircle, X, BookOpen, Upload, ChevronLeft, ChevronRight, ChevronDown, Shield } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { reduce, append } from 'ramda'
@@ -7,12 +8,12 @@ import { DisciplineCard } from '@/components/disciplines/DisciplineCard';
 import { DisciplineDetail } from '@/components/disciplines/DisciplineDetail';
 import { SkeletonCard } from '@/components/ui/skeleton-card';
 import { useApp } from '@/contexts/AppContext';
-import { useCourses as useAllCourses, useSections } from '@/hooks/useApi';
+import { useCourses as useAllCourses, useSections, useCourseByCode } from '@/hooks/useApi';
 import { useMyCourses } from '@/hooks/useMyCourses';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
 import { useMySections } from '@/hooks/useMySections';
 import { getBlockCourseBaseCode } from '@/lib/blockCourses';
-import {Course, CourseApi, fetchCourseDetail} from '@/services/api';
+import {Course, CourseApi, fetchCourseDetail, fetchCourseByCode} from '@/services/api';
 import {cn, getSemesterTitle} from '@/lib/utils';
 import { fuzzyFilter } from '@/lib/fuzzy';
 import { useMode } from '@/hooks/useMode';
@@ -25,13 +26,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { parseCompleteHistory, type WorkloadData, codeRegex } from '@/utils/historyParser';
 
 const Disciplinas = () => {
-  const { completedDisciplines, toggleCompletedDiscipline } = useApp();
+  const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus, setDisciplineStatus, clearDisciplineStatus } = useApp();
   const { myPrograms } = useMyPrograms();
   const { courses, isLoading, levels } = useMyCourses();
   const { isSimplified, isFull, setMode } = useMode();
   const { isFavorite, favoriteCodes, toggleFavorite } = useFavoriteCourses();
   const { data: allCourses = [] } = useAllCourses();
   const { mySections } = useMySections();
+  const queryClient = useQueryClient();
 
   const selectedBaseCodes = useMemo(() => {
     const set = new Set<string>();
@@ -44,12 +46,294 @@ const Disciplinas = () => {
     return set;
   }, [mySections]);
 
+  const selectedBaseCodesArray = useMemo(() => Array.from(selectedBaseCodes), [selectedBaseCodes]);
+  const completedCodesArray = useMemo(() => {
+    const set = new Set<string>();
+    for (const code of completedDisciplines) {
+      set.add(getBlockCourseBaseCode(code));
+    }
+    return Array.from(set);
+  }, [completedDisciplines]);
+
+  // Cache LOCAL de detalhes (code -> CourseApi) — usa em memória + cache do TanStack.
+  // Não dispara fetch automático de TODAS as disciplinas — busca SOB DEMANDA.
+  const [detailsCache, setDetailsCache] = useState<Map<string, CourseApi>>(new Map());
+  // Set de códigos que já tentamos buscar (mesmo que 404) para não ficar repetindo.
+  const [attemptedCodes, setAttemptedCodes] = useState<Set<string>>(new Set());
+
+  // Helpers para ler/escrever cache do queryClient (devolve em memória se já existir)
+  const getCachedDetail = useCallback((code: string): CourseApi | undefined => {
+    const k = getBlockCourseBaseCode(code);
+    if (detailsCache.has(k)) return detailsCache.get(k)!;
+    // Também tenta pegar do cache do QueryClient (cache compartilhado)
+    const fromQuery = queryClient.getQueryData<CourseApi>(['course-by-code', k]);
+    if (fromQuery) return fromQuery;
+    return undefined;
+  }, [detailsCache, queryClient]);
+
+  // Tenta trazer do cache, ou dispara fetch único e salva em cache
+  const fetchDetailLazy = useCallback(async (code: string): Promise<CourseApi | null> => {
+    const k = getBlockCourseBaseCode(code);
+    if (attemptedCodes.has(k)) {
+      const cached = getCachedDetail(k);
+      return cached || null;
+    }
+    // Primeiro, checa novamente (poderia ter chegado via outro call)
+    const existing = getCachedDetail(k);
+    if (existing) return existing;
+    try {
+      // Usa o TanStack para garantir dedup de requisição e caching global
+      const data = await queryClient.fetchQuery({
+        queryKey: ['course-by-code', k],
+        queryFn: () => fetchCourseByCode(k),
+        staleTime: 1000 * 60 * 60,
+      });
+      if (data) {
+        setDetailsCache(prev => {
+          const next = new Map(prev);
+          next.set(k, data as CourseApi);
+          return next;
+        });
+      }
+      setAttemptedCodes(prev => { const next = new Set(prev); next.add(k); return next; });
+      return (data as CourseApi) || null;
+    } catch {
+      setAttemptedCodes(prev => { const next = new Set(prev); next.add(k); return next; });
+      return null;
+    }
+  }, [queryClient, attemptedCodes, getCachedDetail]);
+
+  // Fetch INICIAL: apenas disciplinas SELECIONADAS + CURSADAS (pequeno conjunto, nunca todas).
+  // Isso evita as ~300 requisições no carregamento.
+  useEffect(() => {
+    const priorities = new Set<string>();
+    for (const b of selectedBaseCodesArray) priorities.add(b);
+    for (const b of completedCodesArray) priorities.add(b);
+    if (priorities.size === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      // Concorrência limitada: carrega em lotes de 10 com delay para não estourar o navegador
+      const arr = Array.from(priorities).filter(c => !attemptedCodes.has(c));
+      for (let i = 0; i < arr.length; i += 10) {
+        if (cancelled) return;
+        const chunk = arr.slice(i, i + 10);
+        await Promise.all(chunk.map(c => fetchDetailLazy(c).catch(() => null)));
+      }
+    })();
+    return () => { cancelled = true; };
+    // Executar apenas quando listas mudarem e após mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Helper extrai equivalentes de um detalhe já carregado (dev base codes)
+  const extractEquivalentBaseCodes = (detail: CourseApi | undefined): Set<string> => {
+    const out = new Set<string>();
+    const equivalences = (detail as any)?.equivalences as any[][] | undefined;
+    if (!equivalences) return out;
+    for (const grp of equivalences) {
+      if (!Array.isArray(grp)) continue;
+      for (const eq of grp) {
+        const eqCode = (eq as any)?.code as string | undefined;
+        if (eqCode) out.add(getBlockCourseBaseCode(eqCode));
+      }
+    }
+    return out;
+  };
+
+  // Retorna lista de baseCodes relacionados a um código (ele próprio + equivalentes)
+  // Funciona com lazy fetching: se precisar e não tiver, dispara fetch.
+  // Quando chamados de useMemo (síncrono), devolve apenas o que já está em cache.
+  const getRelatedBaseCodesSync = useCallback((code: string): Set<string> => {
+    const out = new Set<string>();
+    const base = getBlockCourseBaseCode(code);
+    out.add(base);
+    const detail = getCachedDetail(base);
+    if (detail) {
+      for (const b of extractEquivalentBaseCodes(detail)) out.add(b);
+    }
+    // Também olha sentido inverso: checa se algum curso já carregado referencia este
+    for (const [key, d] of detailsCache.entries()) {
+      if (key === base) continue;
+      const eqs = extractEquivalentBaseCodes(d);
+      if (eqs.has(base)) out.add(key);
+    }
+    return out;
+  }, [detailsCache, getCachedDetail]);
+
+  // Verifica equivalência on-demand (usado em eventos/UI — pode disparar fetch)
+  const getRelatedBaseCodesAsync = useCallback(async (code: string): Promise<Set<string>> => {
+    const base = getBlockCourseBaseCode(code);
+    // Garante que o próprio código está carregado (ou tentamos)
+    await fetchDetailLazy(base);
+    const out = getRelatedBaseCodesSync(code);
+    // Também dispara fetch para todas as equivalências encontradas (preenche cache)
+    const toFetch: string[] = [];
+    for (const b of out) {
+      if (!attemptedCodes.has(b)) toFetch.push(b);
+    }
+    for (let i = 0; i < toFetch.length; i += 8) {
+      const chunk = toFetch.slice(i, i + 8);
+      await Promise.all(chunk.map(c => fetchDetailLazy(c).catch(() => null)));
+    }
+    // Depois de buscar, calcula de novo (pode ter novas equivalências)
+    return getRelatedBaseCodesSync(code);
+  }, [getRelatedBaseCodesSync, attemptedCodes, fetchDetailLazy]);
+
+  const equivalentCodesToSelected = useMemo(() => {
+    const set = new Set<string>();
+    for (const base of selectedBaseCodes) {
+      // Direction 1: selected -> its equivalences
+      const rel = getRelatedBaseCodesSync(base);
+      for (const r of rel) if (r !== base) set.add(r);
+      // Direction 2: any course (loaded) whose equivalence is selected -> mark it
+      for (const [key, d] of detailsCache.entries()) {
+        if (selectedBaseCodes.has(key)) continue;
+        const eqs = extractEquivalentBaseCodes(d);
+        if (eqs.has(base)) set.add(key);
+      }
+    }
+    return set;
+  }, [selectedBaseCodes, detailsCache, getRelatedBaseCodesSync]);
+
+  const equivalentCodesToCompleted = useMemo(() => {
+    const set = new Set<string>();
+    const completedSet = new Set(completedCodesArray);
+    for (const base of completedSet) {
+      const rel = getRelatedBaseCodesSync(base);
+      for (const r of rel) if (r !== base) set.add(r);
+      for (const [key, d] of detailsCache.entries()) {
+        if (completedSet.has(key)) continue;
+        const eqs = extractEquivalentBaseCodes(d);
+        if (eqs.has(base)) set.add(key);
+      }
+    }
+    return set;
+  }, [completedCodesArray, detailsCache, getRelatedBaseCodesSync]);
+
+  // Equivalent codes (bidirectional) — on demand
+  const getEquivalentCodesForCourse = useCallback(async (code: string): Promise<string[]> => {
+    const relatedBases = await getRelatedBaseCodesAsync(code);
+    const codes = new Set<string>();
+    for (const base of relatedBases) {
+      for (const c of courses) {
+        if (getBlockCourseBaseCode(c.code) === base) codes.add(c.code);
+      }
+      // Também adiciona o próprio se o baseCode bater
+      if (getBlockCourseBaseCode(code) === base) codes.add(code);
+    }
+    // Remove o próprio código do resultado de equivalentes
+    codes.delete(code);
+    // Se o próprio código tem variantes de bloco (ex: MATB59.0 / MATB59.1), mantém todas
+    // Mas sempre retorna código completo e não só base
+    return Array.from(codes);
+  }, [getRelatedBaseCodesAsync, courses]);
+
+  // Sync fallback para useCallbacks que precisam rodar em render (síncrono) — 
+  // usamos SOMENTE onde é necessário para validar direto, e apenas com dados já em cache.
+  const getEquivalentCodesForCourseSync = useCallback((code: string): string[] => {
+    const relatedBases = getRelatedBaseCodesSync(code);
+    const codes = new Set<string>();
+    for (const base of relatedBases) {
+      for (const c of courses) {
+        if (getBlockCourseBaseCode(c.code) === base) codes.add(c.code);
+      }
+      if (getBlockCourseBaseCode(code) === base) codes.add(code);
+    }
+    return Array.from(codes);
+  }, [getRelatedBaseCodesSync, courses]);
+
+  // Helper: verifica se o código (ou algum equivalente/bloco) tem status failed ou dropped.
+  const hasAnyFailedOrDropped = useCallback((code: string): boolean => {
+    const codesSync = new Set<string>([code, ...getEquivalentCodesForCourseSync(code)]);
+    const base = getBlockCourseBaseCode(code);
+    for (const c of courses) {
+      if (getBlockCourseBaseCode(c.code) === base) codesSync.add(c.code);
+    }
+    for (const c of codesSync) {
+      const s = getDisciplineStatus(c);
+      if (s === 'failed' || s === 'dropped') return true;
+    }
+    return false;
+  }, [getEquivalentCodesForCourseSync, getDisciplineStatus, courses]);
+
+  const isCourseSelected = useCallback((code: string): boolean => {
+    if (hasAnyFailedOrDropped(code)) return false;
+    const baseCode = getBlockCourseBaseCode(code);
+    return selectedBaseCodes.has(baseCode) || equivalentCodesToSelected.has(baseCode);
+  }, [selectedBaseCodes, equivalentCodesToSelected, hasAnyFailedOrDropped]);
+
+  const isCourseCompleted = useCallback((code: string): boolean => {
+    const baseCode = getBlockCourseBaseCode(code);
+    if (hasAnyFailedOrDropped(code)) return false;
+    // Check direct completion first
+    const status = getDisciplineStatus(code);
+    const directCompleted = completedDisciplines.includes(code) || status === 'approved';
+    if (directCompleted) return true;
+    // Check equivalents cached (apenas o que já temos — o resto dispara só quando necessário)
+    if (equivalentCodesToCompleted.has(baseCode)) {
+      const relatedBases = getRelatedBaseCodesSync(baseCode);
+      for (const r of relatedBases) {
+        if (r === baseCode) continue;
+        if (hasAnyFailedOrDropped(r)) continue;
+        // Encontra os códigos concretos (cursos do programa) para essa base e checa
+        const candidates: string[] = [r];
+        for (const c of courses) if (getBlockCourseBaseCode(c.code) === r) candidates.push(c.code);
+        for (const cc of candidates) {
+          const eqStatus = getDisciplineStatus(cc);
+          if (completedDisciplines.includes(cc) || eqStatus === 'approved') return true;
+        }
+      }
+      return true;
+    }
+    return false;
+  }, [completedDisciplines, equivalentCodesToCompleted, hasAnyFailedOrDropped, getDisciplineStatus, getRelatedBaseCodesSync, courses]);
+
+  // Toggle completed for a course and all its equivalents (async, usa lazy fetch)
+  const handleToggleCompletedForAllEquivalents = useCallback(async (code: string) => {
+    const relatedCodesAsync = await getEquivalentCodesForCourse(code);
+    const allCodes = new Set<string>([code, ...relatedCodesAsync]);
+    const currentlyCompleted = completedDisciplines.includes(code) || getDisciplineStatus(code) === 'approved';
+    allCodes.forEach(c => {
+      if (currentlyCompleted) {
+        const isCompletedNow = completedDisciplines.includes(c);
+        if (isCompletedNow) {
+          toggleCompletedDiscipline(c);
+        } else {
+          if (getDisciplineStatus(c) === 'approved') {
+            clearDisciplineStatus(c);
+          }
+        }
+      } else {
+        const isCompletedNow = completedDisciplines.includes(c) || getDisciplineStatus(c) === 'approved';
+        if (!isCompletedNow) {
+          toggleCompletedDiscipline(c);
+        }
+      }
+    });
+  }, [completedDisciplines, getDisciplineStatus, getEquivalentCodesForCourse, toggleCompletedDiscipline, clearDisciplineStatus]);
+
+  // Toggle completed for a single course (síncrono, não usa equivalentes)
+  const handleToggleCompletedSingle = useCallback((code: string) => {
+    toggleCompletedDiscipline(code);
+  }, [toggleCompletedDiscipline]);
+
   const selectedProgram = myPrograms.find(Boolean);
   
   const [search, setSearch] = useState('');
   // search, semester and modal states
   const [activeSemester, setActiveSemester] = useState<number | null>(null);
-  const [selectedDiscipline, setSelectedDiscipline] = useState<Course | null>(null);
+  const [selectedDiscipline, setSelectedDisciplineState] = useState<Course | null>(null);
+  // Abre modal com prefetch em background (uso nos cards)
+  const openDiscipline = useCallback((course: Course) => {
+    setSelectedDisciplineState(course);
+    fetchDetailLazy(course.code).catch(() => null);
+  }, [fetchDetailLazy]);
+  // Setter que aceita null também (uso no onClose)
+  const setSelectedDiscipline = useCallback((course: Course | null) => {
+    setSelectedDisciplineState(course);
+    if (course) fetchDetailLazy(course.code).catch(() => null);
+  }, [fetchDetailLazy]);
   const [showDisciplinesModal, setShowDisciplinesModal] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showBlockedModal, setShowBlockedModal] = useState(false);
@@ -73,13 +357,13 @@ const Disciplinas = () => {
     }
   }, []);
 
-  const handleRestrictedAction = (type: 'completed' | 'favorite', course: Course, mainCode?: string) => {
+  const handleRestrictedAction = async (type: 'completed' | 'favorite', course: Course, mainCode?: string) => {
     if (type === 'completed') {
       // Se já está cursada, permite desmarcar diretamente sem verificar bloqueio
-      if (completedDisciplines.includes(course.code)) {
-        toggleCompletedDiscipline(course.code);
-        if (mainCode) {
-          toggleCompletedDiscipline(mainCode);
+      if (isCourseCompleted(course.code)) {
+        await handleToggleCompletedForAllEquivalents(course.code);
+        if (mainCode && mainCode !== course.code) {
+          await handleToggleCompletedForAllEquivalents(mainCode);
         }
         return;
       }
@@ -97,9 +381,9 @@ const Disciplinas = () => {
       setShowUpgradeModal(true);
     } else {
       if (type === 'completed') {
-        toggleCompletedDiscipline(course.code);
-        if (mainCode) {
-          toggleCompletedDiscipline(mainCode);
+        await handleToggleCompletedForAllEquivalents(course.code);
+        if (mainCode && mainCode !== course.code) {
+          await handleToggleCompletedForAllEquivalents(mainCode);
         }
       } else {
         toggleFavorite(course.code);
@@ -107,7 +391,7 @@ const Disciplinas = () => {
     }
   };
 
-  const confirmUpgrade = () => {
+  const confirmUpgrade = async () => {
     if (pendingAction) {
       setMode('full');
       localStorage.setItem('mode', 'full');
@@ -115,7 +399,7 @@ const Disciplinas = () => {
       setShowUpgradeModal(false);
       // Executar a ação após upgrade
       if (pendingAction.type === 'completed' && pendingAction.course) {
-        toggleCompletedDiscipline(pendingAction.course.code);
+        await handleToggleCompletedForAllEquivalents(pendingAction.course.code);
       } else if (pendingAction.type === 'favorite' && pendingAction.course) {
         toggleFavorite(pendingAction.course.code);
       } else if (pendingAction.type === 'import' && pendingAction.codes) {
@@ -150,31 +434,31 @@ const Disciplinas = () => {
     return prereqs;
   };
 
-  const markPrereqsAsCompleted = () => {
+  const markPrereqsAsCompleted = async () => {
     if (pendingAction?.course) {
       const prereqs = getPrerequisitesList(pendingAction.course);
-      prereqs.forEach(code => {
-        if (!completedDisciplines.includes(code)) {
-          toggleCompletedDiscipline(code);
+      for (const code of prereqs) {
+        if (!isCourseCompleted(code)) {
+          await handleToggleCompletedForAllEquivalents(code);
         }
-      });
+      }
       // Marca a disciplina atual também
-      toggleCompletedDiscipline(pendingAction.course.code);
+      await handleToggleCompletedForAllEquivalents(pendingAction.course.code);
       // Se for equivalente, marca também a disciplina principal
-      if (pendingAction.mainCode) {
-        toggleCompletedDiscipline(pendingAction.mainCode);
+      if (pendingAction.mainCode && pendingAction.mainCode !== pendingAction.course.code) {
+        await handleToggleCompletedForAllEquivalents(pendingAction.mainCode);
       }
     }
     setShowBlockedModal(false);
     setPendingAction(null);
   };
 
-  const markOnlyCurrentAsCompleted = () => {
+  const markOnlyCurrentAsCompleted = async () => {
     if (pendingAction?.course) {
-      toggleCompletedDiscipline(pendingAction.course.code);
+      await handleToggleCompletedForAllEquivalents(pendingAction.course.code);
       // Se for equivalente, marca também a disciplina principal
-      if (pendingAction.mainCode) {
-        toggleCompletedDiscipline(pendingAction.mainCode);
+      if (pendingAction.mainCode && pendingAction.mainCode !== pendingAction.course.code) {
+        await handleToggleCompletedForAllEquivalents(pendingAction.mainCode);
       }
     }
     setShowBlockedModal(false);
@@ -265,8 +549,8 @@ const Disciplinas = () => {
 
   const applyImportedCodes = (codes: string[]) => {
     codes.forEach(code => {
-      if (!completedDisciplines.includes(code)) {
-        toggleCompletedDiscipline(code);
+      if (!isCourseCompleted(code)) {
+        handleToggleCompletedForAllEquivalents(code);
       }
     });
   };
@@ -486,12 +770,12 @@ const Disciplinas = () => {
 
   // Build rules map for useFilter (excluding 'favorites' which controls layout)
   const rules = useMemo(() => ({
-    completed: (c: Course) => completedDisciplines.includes(c.code),
-    not_completed: (c: Course) => !completedDisciplines.includes(c.code),
+    completed: (c: Course) => isCourseCompleted(c.code),
+    not_completed: (c: Course) => !isCourseCompleted(c.code),
     available: (c: Course) => canTake(c.code),
     offered: (c: Course) => (c.sections_count ?? 0) > 0,
-    selected: (c: Course) => selectedBaseCodes.has(getBlockCourseBaseCode(c.code)),
-  }), [completedDisciplines, selectedBaseCodes]);
+    selected: (c: Course) => isCourseSelected(c.code),
+  }), [isCourseCompleted, isCourseSelected]);
 
   const { isActive, isOnly, isAll, activeIds, apply, toggle } = useFilter<Course>({ rules });
 
@@ -803,8 +1087,12 @@ const Disciplinas = () => {
                             discipline={course}
                             available={true}
                             blocked={false}
-                            isSelected={selectedBaseCodes.has(getBlockCourseBaseCode(course.code))}
-                            onClick={() => setSelectedDiscipline(course)}
+                            isSelected={isCourseSelected(course.code)}
+                            isCompleted={isCourseCompleted(course.code)}
+                            isFailed={getDisciplineStatus(course.code) === 'failed'}
+                            isDropped={getDisciplineStatus(course.code) === 'dropped'}
+                            onToggleCompleted={handleToggleCompletedForAllEquivalents}
+                            onClick={() => openDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />
                         </motion.div>
@@ -905,8 +1193,12 @@ const Disciplinas = () => {
                             discipline={course}
                             available={availableProp}
                             blocked={blockedProp}
-                            isSelected={selectedBaseCodes.has(getBlockCourseBaseCode(course.code))}
-                            onClick={() => setSelectedDiscipline(course)}
+                            isSelected={isCourseSelected(course.code)}
+                            isCompleted={isCourseCompleted(course.code)}
+                            isFailed={getDisciplineStatus(course.code) === 'failed'}
+                            isDropped={getDisciplineStatus(course.code) === 'dropped'}
+                            onToggleCompleted={handleToggleCompletedForAllEquivalents}
+                            onClick={() => openDiscipline(course)}
                             onRestrictedAction={handleRestrictedAction}
                           />
                         </motion.div>

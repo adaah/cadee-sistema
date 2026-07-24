@@ -21,7 +21,7 @@ interface LargeDisciplineCardProps {
   // Se deve mostrar botão de marcar como cursada
   showCompletedButton?: boolean;
   // Callback para ação restrita (bloqueio)
-  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course, mainCode?: string) => void;
+  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course, mainCode?: string) => void | Promise<void>;
   // Dados do curso para verificar bloqueio
   courseData?: Course | null;
   // Código da disciplina principal (para equivalentes)
@@ -43,10 +43,17 @@ export function LargeDisciplineCard({
   mainCode,
   equivPrerequisites
 }: LargeDisciplineCardProps) {
-  const { completedDisciplines, toggleCompletedDiscipline } = useApp();
+  const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus, setDisciplineStatus, clearDisciplineStatus } = useApp();
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
 
-  const isCompleted = completedDisciplines.includes(code);
+  const status = getDisciplineStatus(code);
+  // Na tela Disciplinas: failed / dropped NÃO são exibidos. Apenas cancela o cursada.
+  const hasFailedOrDropped = status === 'failed' || status === 'dropped';
+  const isFailed = false;
+  const isDropped = false;
+  // failed / dropped cancela completed mas não mostra selo
+  let isCompleted = completedDisciplines.includes(code) || status === 'approved';
+  if (hasFailedOrDropped) isCompleted = false;
   const favorite = isFavorite(code);
   const sectionsCount = (summary as any)?.sections_count ?? 0;
 
@@ -62,19 +69,43 @@ export function LargeDisciplineCard({
 
   const handleCompletedClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    // Se já está cursada, permite desmarcar diretamente sem verificar bloqueio
-    if (isCompleted) {
-      if (isEquivalent && mainCode) {
-        toggleCompletedDiscipline(code);
-        toggleCompletedDiscipline(mainCode);
+
+    // Helper: toggle um único código entre completed (approved) e não-completed
+    const toggleSingle = (c: string) => {
+      const cStatus = getDisciplineStatus(c);
+      const isCurCompleted = completedDisciplines.includes(c) || cStatus === 'approved';
+      if (isCurCompleted) {
+        // Desmarcar sempre permitido
+        if (completedDisciplines.includes(c)) {
+          toggleCompletedDiscipline(c);
+        } else if (cStatus === 'approved') {
+          clearDisciplineStatus(c);
+        }
       } else {
-        toggleCompletedDiscipline(code);
+        // Marcar como completed
+        if (onRestrictedAction && courseData && !isEquivalent) {
+          // Somente chama onRestrictedAction para marcar (não para desmarcar)
+          // mas para large card, equivalentes usam mainCode → vamos tratar depois
+        }
+        if (!completedDisciplines.includes(c)) {
+          toggleCompletedDiscipline(c);
+          setDisciplineStatus(c, 'approved');
+        }
       }
+    };
+
+    const relatedCodes = new Set<string>([code]);
+    if (mainCode && mainCode !== code) relatedCodes.add(mainCode);
+
+    // Marcar/desmarcar completed: se for equivalente + mainCode, marca os dois sempre
+    // (o usuário não pode desfazer de um sem o outro — mesma regra antiga, mas funciona para desmarcar também)
+    if (isCompleted) {
+      // DESMARCAÇÃO (sempre permitido, sem restrições)
+      relatedCodes.forEach(toggleSingle);
       return;
     }
-    
-    // Se for equivalente com pré-requisitos bloqueados, chama onRestrictedAction com dados da equivalente
+
+    // MARCAÇÃO (sujeita a bloqueio se aplicável)
     if (isEquivalent && hasEquivPrereqs && !hasEquivPrereqsDone) {
       if (onRestrictedAction && courseData) {
         onRestrictedAction('completed', courseData, mainCode);
@@ -82,18 +113,11 @@ export function LargeDisciplineCard({
       }
       return;
     }
-    
-    // Se for equivalente e tiver código principal, marca ambos
-    if (isEquivalent && mainCode) {
-      toggleCompletedDiscipline(code);
-      toggleCompletedDiscipline(mainCode);
-      return;
-    }
-    
+
     if (onRestrictedAction && courseData) {
-      onRestrictedAction('completed', courseData);
+      onRestrictedAction('completed', courseData, mainCode);
     } else {
-      toggleCompletedDiscipline(code);
+      relatedCodes.forEach(toggleSingle);
     }
   };
 
@@ -141,7 +165,11 @@ export function LargeDisciplineCard({
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-muted text-muted-foreground">{code}</span>
+        <span className={cn(
+          "px-2.5 py-1 rounded-lg text-xs font-semibold",
+          isCompleted ? "bg-success/10 text-success" :
+          "bg-muted text-muted-foreground"
+        )}>{code}</span>
         <div className="flex items-center gap-1">
           {!isEquivalent && <FavoriteButton active={favorite} onToggle={() => toggleFavorite(code)} />}
           {shouldShowCompletedButton && (
