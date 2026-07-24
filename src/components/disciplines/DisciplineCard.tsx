@@ -13,22 +13,42 @@ interface DisciplineCardProps {
   available?: boolean;
   blocked?: boolean;
   isSelected?: boolean;
-  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course) => void;
+  isCompleted?: boolean;
+  isFailed?: boolean;
+  isDropped?: boolean;
+  onToggleCompleted?: (code: string) => void | Promise<void>;
+  onRestrictedAction?: (type: 'completed' | 'favorite', course: Course) => void | Promise<void>;
 }
 
-export function DisciplineCard({ discipline, onClick, available, blocked, isSelected, onRestrictedAction }: DisciplineCardProps) {
+export function DisciplineCard({ 
+  discipline, 
+  onClick, 
+  available, 
+  blocked, 
+  isSelected, 
+  isCompleted: isCompletedProp,
+  isFailed: isFailedProp,
+  isDropped: isDroppedProp,
+  onToggleCompleted,
+  onRestrictedAction 
+}: DisciplineCardProps) {
   const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus } = useApp();
   const { isSimplified } = useMode();
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
 
   const status = getDisciplineStatus(discipline.code);
-  const isCompleted = completedDisciplines.includes(discipline.code) || status === 'approved';
-  const isFailed = status === 'failed';
-  const isDropped = status === 'dropped';
+  // Na tela Disciplinas: failed / dropped NÃO são exibidos. Se reprovada/trancada, volta para status padrão.
+  // Ou seja: se status é failed/dropped, considera como se não tivesse nenhum status especial
+  const isFailed = false;
+  const isDropped = false;
+  // Apenas approved OU completedDisciplines contam como cursada (failed/dropped cancelam o completed)
+  const hasFailedOrDroppedStatus = (isFailedProp !== undefined ? isFailedProp : (status === 'failed')) || (isDroppedProp !== undefined ? isDroppedProp : (status === 'dropped'));
+  let isCompleted = isCompletedProp !== undefined ? isCompletedProp : (completedDisciplines.includes(discipline.code) || status === 'approved');
+  if (hasFailedOrDroppedStatus) isCompleted = false;
   const favorite = isFavorite(discipline.code);
   const showCompletedStyles = isCompleted;
-  const showFailedStyles = isFailed;
-  const showDroppedStyles = isDropped;
+  const showFailedStyles = false;
+  const showDroppedStyles = false;
   const showBlocked = !!blocked;
   const showAvailable = !!available;
 
@@ -45,11 +65,19 @@ export function DisciplineCard({ discipline, onClick, available, blocked, isSele
     e.stopPropagation();
     // Se já está cursada, permite desmarcar diretamente sem modal
     if (isCompleted) {
-      toggleCompletedDiscipline(discipline.code);
+      if (onToggleCompleted) {
+        onToggleCompleted(discipline.code);
+      } else {
+        toggleCompletedDiscipline(discipline.code);
+      }
     } else if (onRestrictedAction) {
       onRestrictedAction('completed', discipline);
     } else {
-      toggleCompletedDiscipline(discipline.code);
+      if (onToggleCompleted) {
+        onToggleCompleted(discipline.code);
+      } else {
+        toggleCompletedDiscipline(discipline.code);
+      }
     }
   };
 
@@ -65,11 +93,9 @@ export function DisciplineCard({ discipline, onClick, available, blocked, isSele
         "flex h-full flex-col",
         "transition-all duration-200 hover:shadow-card-hover hover:scale-[1.02]",
         showCompletedStyles && "border-success/50 bg-success/5",
-        showFailedStyles && "border-destructive/50 bg-destructive/5",
-        showDroppedStyles && "border-border bg-muted/40 opacity-75",
-        isSelected && !showCompletedStyles && !showFailedStyles && !showDroppedStyles && "border-primary/50 bg-primary/5",
-        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && !isSelected && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
-        !showCompletedStyles && !showFailedStyles && !showDroppedStyles && !isSelected && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
+        isSelected && !showCompletedStyles && "border-primary/50 bg-primary/5",
+        !showCompletedStyles && !isSelected && showAvailable && "bg-warning/10 border-warning hover:bg-warning/20",
+        !showCompletedStyles && !isSelected && showBlocked && "dark:bg-gray-800/50 bg-muted/30 border-gray-400 opacity-60"
       )}
       onClick={onClick}
     >
@@ -79,10 +105,6 @@ export function DisciplineCard({ discipline, onClick, available, blocked, isSele
             "px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-semibold",
             showCompletedStyles
               ? "bg-success/10 text-success"
-              : showFailedStyles
-              ? "bg-destructive/10 text-destructive"
-              : showDroppedStyles
-              ? "bg-muted text-muted-foreground"
               : isSelected
               ? "bg-primary/10 text-primary"
               : showAvailable

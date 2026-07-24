@@ -147,11 +147,9 @@ export function useOverallProgress(): OverallProgressData {
       const parsedWorkload = parsedData.workload as WorkloadData | null;
       const parsedSemesters = parsedData.semesters as Map<string, any> | null;
 
-      console.log('[useOverallProgress] parsedWorkload:', parsedWorkload);
-
       // Usar os requisitos do histórico importado se disponíveis, caso contrário usar curriculumRequirements
       const mandatoryTotal = parsedWorkload?.mandatory.required ?? curriculumRequirements.mandatory;
-      const electivesTotal = parsedWorkload?.elective.required ?? curriculumRequirements.elective;
+      const electivesTotal = parsedWorkload?.elective.required ?? curriculumRequirements.electives;
       const complementaryTotal = parsedWorkload?.complementary.required ?? curriculumRequirements.complementary;
 
       // O histórico importado já tem as horas completadas, não somar manualWorkloadBonus
@@ -159,16 +157,6 @@ export function useOverallProgress(): OverallProgressData {
       const electivesCompleted = parsedWorkload?.elective.completed ?? 0;
       const complementaryCompleted = parsedWorkload?.complementary.completed ?? 0;
       const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
-
-      console.log('[useOverallProgress] progressData:', {
-        mandatoryCompleted,
-        electivesCompleted,
-        complementaryCompleted,
-        totalHours,
-        mandatoryTotal,
-        electivesTotal,
-        complementaryTotal
-      });
 
       return {
         totalHours,

@@ -1,12 +1,14 @@
 import { Users, Trash2, Clock, Info, AlertTriangle, CheckCircle2, XCircle, Ban, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { useMySections } from '@/hooks/useMySections';
 import { useMyCourses } from '@/hooks/useMyCourses.ts';
 import { useApp } from '@/contexts/AppContext';
 import { useCurrentTerm } from '@/hooks/useCurrentTerm';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
-import { useCourses, useSections } from '@/hooks/useApi';
+import { useCourses, useSections, useCourseByCode } from '@/hooks/useApi';
 import { DisciplineDetail } from '@/components/disciplines/DisciplineDetail';
+import { fetchCourseByCode } from '@/services/api';
 import type { Course, Section } from '@/services/api';
 import type { DisciplineStatus } from '@/lib/semester';
 import { formatTimeCodes } from '@/lib/schedule';
@@ -55,6 +57,70 @@ export function ScheduleSummary() {
   
   const coursesByCode = useMemo(() => new Map(courses.map((c) => [c.code, c])), [courses]);
   const coursesIndexByCode = useMemo(() => new Map(coursesIndex.map((c) => [c.code, c])), [coursesIndex]);
+  const allProgramCourseCodesArray = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of courses) set.add(c.code);
+    for (const s of mySections) {
+      const code = s.course?.code || (s as any).course_code;
+      if (code) set.add(code);
+    }
+    return Array.from(set);
+  }, [courses, mySections]);
+
+  // Fetch details for all involved courses to find equivalences
+  const allCourseDetails = useQueries({
+    queries: allProgramCourseCodesArray.map(code => ({
+      queryKey: ['course-by-code', code],
+      queryFn: () => fetchCourseByCode(code),
+      enabled: !!code,
+      staleTime: 1000 * 60 * 60,
+      gcTime: 1000 * 60 * 60 * 24,
+    })),
+  });
+
+  // Get all equivalent codes for a given code (bidirectional)
+  const getEquivalentCodesFor = useCallback((code: string): string[] => {
+    const set = new Set<string>();
+    const baseCode = getBlockCourseBaseCode(code);
+    for (const result of allCourseDetails) {
+      const detail = result.data;
+      if (!detail?.equivalences || !detail?.code) continue;
+      const courseBase = getBlockCourseBaseCode(detail.code);
+      let isRelated = courseBase === baseCode;
+      const eqBaseCodes = new Set<string>();
+      for (const eqGroup of detail.equivalences) {
+        for (const eq of eqGroup) {
+          const eqCode = (eq as any).code;
+          if (!eqCode) continue;
+          const eqBase = getBlockCourseBaseCode(eqCode);
+          eqBaseCodes.add(eqBase);
+          if (eqBase === baseCode) isRelated = true;
+        }
+      }
+      if (isRelated) {
+        // Add this course's code
+        set.add(detail.code);
+        // Add all codes from courses that match any eqBase
+        for (const eqBase of eqBaseCodes) {
+          for (const c of courses) {
+            if (getBlockCourseBaseCode(c.code) === eqBase) {
+              set.add(c.code);
+            }
+          }
+          for (const s of mySections) {
+            const sCode = s.course?.code || (s as any).course_code;
+            if (sCode && getBlockCourseBaseCode(sCode) === eqBase) {
+              set.add(sCode);
+            }
+          }
+          if (getBlockCourseBaseCode(code) === eqBase) {
+            set.add(code);
+          }
+        }
+      }
+    }
+    return Array.from(set);
+  }, [allCourseDetails, courses, mySections]);
   
   // Group sections by base course code
   const groupedSections = useMemo(() => {
@@ -110,7 +176,13 @@ export function ScheduleSummary() {
   }
 
   const handleStatusClick = (codes: string[], status: DisciplineStatus) => {
+    // Collect all codes + their equivalents
+    const allCodes = new Set<string>();
     codes.forEach(code => {
+      allCodes.add(code);
+      getEquivalentCodesFor(code).forEach(c => allCodes.add(c));
+    });
+    Array.from(allCodes).forEach(code => {
       const current = getDisciplineStatus(code);
       if (current === status) {
         clearDisciplineStatus(code, outcomeTerm || undefined);

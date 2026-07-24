@@ -8,7 +8,7 @@ import { useMySections } from '@/hooks/useMySections';
 import { cn, getFreeSeats } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 import { useFavoriteCourses } from '@/hooks/useFavoriteCourses';
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { LargeDisciplineCard } from '@/components/disciplines/LargeDisciplineCard';
 import { SectionCard } from '@/components/disciplines/SectionCard';
 import { BreadcrumbTags } from '@/components/disciplines/BreadcrumbTags';
@@ -16,6 +16,8 @@ import { Badge } from '@/components/ui/badge';
 import { motion, useAnimationControls } from 'motion/react';
 import { FavoriteButton } from '@/components/common/FavoriteButton';
 import { AnimatePresence } from 'framer-motion';
+import { fetchCourseByCode } from '@/services/api';
+import { useQueries } from '@tanstack/react-query';
 // Extracted component to keep identity stable across renders
 function CompletedButton({
   completed,
@@ -99,7 +101,7 @@ interface DisciplineDetailProps {
 }
 
 export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: DisciplineDetailProps) {
-  const { completedDisciplines, toggleCompletedDiscipline } = useApp();
+  const { completedDisciplines, toggleCompletedDiscipline, getDisciplineStatus, setDisciplineStatus, clearDisciplineStatus } = useApp();
   const { mySections, toggleSection } = useMySections();
   // Estado local para navegação dentro do drawer
   const [stack, setStack] = useState<{ code: string }[]>([{ code: discipline.code }]);
@@ -167,6 +169,100 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
   }, [currentCode]);
   const { isFavorite, toggleFavorite } = useFavoriteCourses();
 
+  // Busca bidirecional de equivalentes: para equivalentes da currentCode, precisa também checar o caminho inverso
+  // Primeiro, pega todos os códigos únicos já presentes (currentCode + equivalentes no currentDetail + allCourses)
+  const relatedCodesForEquiv = useMemo(() => {
+    const set = new Set<string>();
+    set.add(currentCode);
+    set.add(detailCode);
+    if (currentDetail?.equivalences) {
+      for (const grp of currentDetail.equivalences) {
+        for (const eq of grp) {
+          if ((eq as any).code) set.add((eq as any).code);
+        }
+      }
+    }
+    for (const c of allCourses) set.add(c.code);
+    return Array.from(set);
+  }, [currentCode, detailCode, currentDetail, allCourses]);
+
+  const relatedCourseDetails = useQueries({
+    queries: relatedCodesForEquiv.map(code => ({
+      queryKey: ['course-by-code', code],
+      queryFn: () => fetchCourseByCode(code),
+      enabled: !!code,
+      staleTime: 1000 * 60 * 60,
+      gcTime: 1000 * 60 * 60 * 24,
+    })),
+  });
+
+  // Retorna TODOS os códigos equivalentes (bidirecional) para um código base
+  const getAllEquivalentCodesFor = useCallback((code: string): string[] => {
+    const base = getBlockCourseBaseCode(code);
+    const set = new Set<string>();
+    for (const res of relatedCourseDetails) {
+      const detail = res.data;
+      if (!detail?.equivalences || !detail?.code) continue;
+      const detailBase = getBlockCourseBaseCode(detail.code);
+      let isRelated = detailBase === base;
+      const bases = new Set<string>([detailBase]);
+      for (const grp of detail.equivalences) {
+        for (const eq of grp) {
+          const eqCode = (eq as any).code;
+          if (!eqCode) continue;
+          const eqBase = getBlockCourseBaseCode(eqCode);
+          bases.add(eqBase);
+          if (eqBase === base) isRelated = true;
+        }
+      }
+      if (isRelated) {
+        set.add(detail.code);
+        for (const b of bases) {
+          for (const c of allCourses) {
+            if (getBlockCourseBaseCode(c.code) === b) set.add(c.code);
+          }
+        }
+        if (getBlockCourseBaseCode(code) === getBlockCourseBaseCode(detail.code)) set.add(code);
+      }
+    }
+    // Inclui os equivalentes explícitos do currentDetail caso não estejam ainda
+    if (currentDetail?.equivalences) {
+      for (const grp of currentDetail.equivalences) {
+        for (const eq of grp) {
+          const eqCode = (eq as any).code;
+          if (eqCode) set.add(eqCode);
+        }
+      }
+    }
+    return Array.from(set);
+  }, [relatedCourseDetails, allCourses, currentDetail]);
+
+  // Marca/desmarca cursada para currentCode e todos equivalentes
+  const handleToggleCompletedWithEquivs = useCallback(() => {
+    const codes = new Set<string>([currentCode, ...getAllEquivalentCodesFor(currentCode)]);
+    // Se está aprovada (ou completed direto) → estamos desmarcando
+    const status = getDisciplineStatus(currentCode);
+    const wasApproved = completedDisciplines.includes(currentCode) || status === 'approved';
+    codes.forEach(c => {
+      const cStatus = getDisciplineStatus(c);
+      if (wasApproved) {
+        // Remover: tira da lista completed e limpa status se era approved
+        if (completedDisciplines.includes(c)) {
+          toggleCompletedDiscipline(c);
+        } else if (cStatus === 'approved') {
+          clearDisciplineStatus(c);
+        }
+      } else {
+        // Adicionar: marca como completed e status approved
+        const isCompletedNow = completedDisciplines.includes(c) || cStatus === 'approved';
+        if (!isCompletedNow) {
+          toggleCompletedDiscipline(c);
+          setDisciplineStatus(c, 'approved');
+        }
+      }
+    });
+  }, [currentCode, getAllEquivalentCodesFor, getDisciplineStatus, completedDisciplines, toggleCompletedDiscipline, setDisciplineStatus, clearDisciplineStatus]);
+
   const handleAddClass = (section: Section) => {
     const isAlreadyAdded = mySections.some((s) => s.id_ref === section.id_ref);
     toggleSection(section, allSections);
@@ -177,7 +273,31 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
     });
   };
 
-  const isCompleted = useMemo(() => completedDisciplines.includes(currentCode), [completedDisciplines, currentCode]);
+  const isCompleted = useMemo(() => {
+    // failed / dropped tem prioridade máxima
+    const status = getDisciplineStatus(currentCode);
+    if (status === 'failed' || status === 'dropped') return false;
+    const direct = completedDisciplines.includes(currentCode) || status === 'approved';
+    if (direct) return true;
+    // Verifica se algum equivalente está cursada (e não failed/dropped)
+    const base = getBlockCourseBaseCode(currentCode);
+    for (const res of relatedCourseDetails) {
+      const detail = res.data;
+      if (!detail?.code) continue;
+      const eqCode = detail.code;
+      const eqBase = getBlockCourseBaseCode(eqCode);
+      // Verifica se é equivalente ao currentCode
+      const directEq = currentDetail?.equivalences?.some(g => g.some(e => (e as any).code && getBlockCourseBaseCode((e as any).code) === eqBase));
+      const reverseEq = detail.equivalences?.some(g => g.some(e => (e as any).code && getBlockCourseBaseCode((e as any).code) === base));
+      const sameBase = eqBase === base;
+      if (sameBase || directEq || reverseEq) {
+        const s = getDisciplineStatus(eqCode);
+        if (s === 'failed' || s === 'dropped') continue;
+        if (completedDisciplines.includes(eqCode) || s === 'approved') return true;
+      }
+    }
+    return false;
+  }, [currentCode, completedDisciplines, getDisciplineStatus, currentDetail, relatedCourseDetails]);
   
   // Verificar se disciplina está disponível ou bloqueada
   const currentCourse: Course = {
@@ -273,12 +393,12 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
           className="bg-background rounded-lg p-4 w-full max-w-sm max-h-[75vh] overflow-y-auto md:max-w-2xl md:p-6 shadow border my-4"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-start gap-3">
-              <span className="text-sm font-semibold text-primary bg-primary/10 px-2 py-1 rounded mt-0.5">
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-primary bg-primary/10 px-2 py-1 rounded w-fit">
                 {currentCode}
               </span>
-              <h3 className="text-xl font-bold">{currentName}</h3>
+              <h3 className="text-xl font-bold leading-tight">{currentName}</h3>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
               <X className="w-5 h-5" />
@@ -300,16 +420,7 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
 
           <CompletedButton 
             completed={isCompleted} 
-            onClick={() => {
-              toggleCompletedDiscipline(currentCode);
-              // Marcar/desmarcar também todas as equivalentes
-              const equivalents = currentDetail?.equivalences || [];
-              equivalents.forEach((eq: any) => {
-                if (eq.code && eq.code !== currentCode) {
-                  toggleCompletedDiscipline(eq.code);
-                }
-              });
-            }} 
+            onClick={handleToggleCompletedWithEquivs}
             onRestrictedAction={onRestrictedAction}
             course={currentCourse}
             isAvailable={isAvailable}
