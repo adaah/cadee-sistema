@@ -71,6 +71,40 @@ export function ScheduleSummary() {
     return groups;
   }, [mySections]);
 
+  // Compute conflicts between selected sections, grouped by base course code
+  const conflictsByBaseCode = useMemo(() => {
+    const conflictsMap = new Map<string, Set<string>>();
+
+    for (let i = 0; i < mySections.length; i++) {
+      const sectionA = mySections[i];
+      const codeA = sectionA.course?.code || (sectionA as any)?.course_code;
+      if (!codeA) continue;
+      const baseA = getBlockCourseBaseCode(codeA);
+
+      for (let j = i + 1; j < mySections.length; j++) {
+        const sectionB = mySections[j];
+        const codeB = sectionB.course?.code || (sectionB as any)?.course_code;
+        if (!codeB) continue;
+        const baseB = getBlockCourseBaseCode(codeB);
+
+        if (baseA === baseB) continue;
+
+        const conflicts = getConflictsForSection(sectionA);
+        const hasConflict = conflicts.some(c => c.section.id_ref === sectionB.id_ref);
+
+        if (hasConflict) {
+          if (!conflictsMap.has(baseA)) conflictsMap.set(baseA, new Set());
+          conflictsMap.get(baseA)!.add(baseB);
+
+          if (!conflictsMap.has(baseB)) conflictsMap.set(baseB, new Set());
+          conflictsMap.get(baseB)!.add(baseA);
+        }
+      }
+    }
+
+    return conflictsMap;
+  }, [mySections, getConflictsForSection]);
+
   if (mySections.length === 0) {
     return null;
   }
@@ -145,9 +179,9 @@ export function ScheduleSummary() {
                          courses?.find((c) => c.code === disciplineCodes[0]);
           const workload = (course as any)?.workload;
           
-          // Get all conflicts and conflict codes for all sections
-          const allConflicts = sections.flatMap(s => getConflictsForSection(s));
-          const conflictCodes = getConflictCodes(allConflicts);
+          // Get all conflicts from conflictsByBaseCode
+          const conflictBaseCodes = conflictsByBaseCode.get(baseCode) || new Set<string>();
+          const conflictCodes = Array.from(conflictBaseCodes);
 
           return (
             <div
@@ -246,15 +280,19 @@ export function ScheduleSummary() {
 
                     {conflictCodes.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-3">
-                        {conflictCodes.map((code) => (
-                          <span
-                            key={code}
-                            className="px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground inline-flex items-center gap-1"
-                          >
-                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                            Conflito com {code}
-                          </span>
-                        ))}
+                        {conflictCodes.map((code) => {
+                          const conflictingCourse = coursesIndexByCode.get(code) || coursesByCode.get(code);
+                          const conflictingName = conflictingCourse?.name || code;
+                          return (
+                            <span
+                              key={code}
+                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-secondary text-secondary-foreground inline-flex items-center gap-1"
+                            >
+                              <AlertTriangle className="w-3 h-3 shrink-0" />
+                              Choque com {code} {conflictingName !== code ? `— ${conflictingName}` : ''}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>

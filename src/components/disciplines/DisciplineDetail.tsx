@@ -2,7 +2,7 @@ import { X, Check, ChevronDown, ChevronUp, Clock, Star } from 'lucide-react';
 import { Course, parseSigaaSchedule } from '@/services/api';
 import type { Section } from '@/services/api';
 import { getBlockCourseBaseCode, isBlockCourseCode } from '@/lib/blockCourses';
-import { useCourseSections, useCourseByCode, useCourses } from '@/hooks/useApi';
+import { useCourseSections, useCourseByCode, useCourses, useSections } from '@/hooks/useApi';
 import { useApp } from '@/contexts/AppContext';
 import { useMySections } from '@/hooks/useMySections';
 import { cn, getFreeSeats } from '@/lib/utils';
@@ -274,7 +274,10 @@ export function DisciplineDetail({ discipline, onClose, onRestrictedAction }: Di
           onClick={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-6">
-            <div>
+            <div className="flex items-start gap-3">
+              <span className="text-sm font-semibold text-primary bg-primary/10 px-2 py-1 rounded mt-0.5">
+                {currentCode}
+              </span>
               <h3 className="text-xl font-bold">{currentName}</h3>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
