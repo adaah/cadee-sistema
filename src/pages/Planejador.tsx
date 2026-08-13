@@ -362,6 +362,8 @@ const Planejador = () => {
   const isLoading = loadingCourses || (selectedViewProgramId && !viewProgramDetail);
   const [filtroModalOpen, setFiltroModalOpen] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [hideFull, setHideFull] = useState(false);
+  const [vacancyFilter, setVacancyFilter] = useState<'all' | 'few' | 'many'>('all');
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([]);
   const [horariosSelecionados, setHorariosSelecionados] = useState<string[]>([]);
   const [logicaFiltroDia, setLogicaFiltroDia] = useState<'OU' | 'E'>('OU');
@@ -376,6 +378,10 @@ const Planejador = () => {
   const { completedDisciplines } = useApp();
   const { data: allSections = [] } = useSections();
   const { currentTerm } = useCurrentTerm();
+
+  const hasAnyVacancyData = useMemo(() => {
+    return allSections.some((s) => ((s as any)?.seats_accepted ?? 0) > 0 && ((s as any)?.seats_count ?? 0) > 0);
+  }, [allSections]);
   const { pendingTransition, planningTerm } = useSemesterTransition();
   const myProgramTitles = new Set(myPrograms.map(p => (p.title || '').trim().toLowerCase()));
   const [applyFiltersToSections, setApplyFiltersToSections] = useState(true);
@@ -458,7 +464,7 @@ const Planejador = () => {
     }
 
     const hasFilters = diasSelecionados.length > 0 || horariosSelecionados.length > 0 || 
-      diasRestritos.length > 0 || horariosRestritos.length > 0;
+      diasRestritos.length > 0 || horariosRestritos.length > 0 || hideFull || vacancyFilter !== 'all';
 
     if (!hasFilters) return result;
 
@@ -480,6 +486,16 @@ const Planejador = () => {
         }, new Map<string, Section[]>());
 
     const matchesSection = (section: Section) => {
+      if (hasAnyVacancyData) {
+        const seatsAccepted = (section as any)?.seats_accepted ?? 0;
+        const seatsCount = (section as any)?.seats_count ?? 0;
+        const freeSeats = Math.max(0, seatsCount - seatsAccepted);
+        
+        if (hideFull && freeSeats === 0 && seatsCount > 0) return false;
+        if (vacancyFilter === 'few' && (freeSeats > 10 || freeSeats === 0 || seatsCount === 0)) return false;
+        if (vacancyFilter === 'many' && (freeSeats <= 10 || seatsCount === 0)) return false;
+      }
+
       const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
       if (timeCodes.length === 0) return true;
 
@@ -529,6 +545,8 @@ const Planejador = () => {
     plannerCourses,
     searchTerm,
     showCompleted,
+    hideFull,
+    vacancyFilter,
     completedDisciplines,
     diasSelecionados,
     horariosSelecionados,
@@ -846,17 +864,58 @@ const Planejador = () => {
                 </button>
               </div>
 
-              {/* Botão de mostrar/ocultar cursadas (apenas se houver cursadas) */}
-              {completedDisciplines.length > 0 && (
-                <div className="mb-4 flex md:flex-row md:items-center gap-2">
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 border rounded px-3 py-2 text-sm bg-muted hover:bg-muted/70 transition"
-                    onClick={() => setShowCompleted(!showCompleted)}
-                  >
-                    <Eye className="w-4 h-4" />
-                    {showCompleted ? 'Ocultar cursadas' : 'Mostrar cursadas'}
-                  </button>
+              {/* Botão de mostrar/ocultar cursadas e filtros de vagas */}
+              {(completedDisciplines.length > 0 || hasAnyVacancyData) && (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  {completedDisciplines.length > 0 && (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-card hover:bg-muted/70 transition-colors"
+                      onClick={() => setShowCompleted(!showCompleted)}
+                    >
+                      <Eye className="w-4 h-4 text-muted-foreground" />
+                      {showCompleted ? 'Ocultar cursadas' : 'Mostrar cursadas'}
+                    </button>
+                  )}
+                  
+                  {hasAnyVacancyData && (
+                    <>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-card hover:bg-muted/70 transition-colors"
+                        onClick={() => setHideFull(!hideFull)}
+                      >
+                        <Eye className="w-4 h-4 text-muted-foreground" />
+                        {hideFull ? 'Mostrar lotadas' : 'Ocultar lotadas'}
+                      </button>
+                      <div className="flex items-center gap-2 ml-1">
+                        <span className="text-xs font-medium text-muted-foreground hidden sm:inline-block">Filtro de vagas disponíveis:</span>
+                        <div className="flex items-center bg-card border border-border rounded-lg overflow-hidden text-sm">
+                          <button
+                            type="button"
+                            className={cn("px-3 py-1.5 transition-colors", vacancyFilter === 'all' ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")}
+                            onClick={() => setVacancyFilter('all')}
+                          >
+                            Todas
+                          </button>
+                          <button
+                            type="button"
+                            className={cn("px-3 py-1.5 transition-colors border-l border-border", vacancyFilter === 'few' ? "bg-warning/10 font-medium text-warning" : "text-muted-foreground hover:bg-muted/50")}
+                            onClick={() => setVacancyFilter('few')}
+                          >
+                            Poucas vagas
+                          </button>
+                          <button
+                            type="button"
+                            className={cn("px-3 py-1.5 transition-colors border-l border-border", vacancyFilter === 'many' ? "bg-success/10 font-medium text-success" : "text-muted-foreground hover:bg-muted/50")}
+                            onClick={() => setVacancyFilter('many')}
+                          >
+                            Muitas vagas
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -1266,6 +1325,9 @@ const Planejador = () => {
                       horariosSelecionados={applyFiltersToSections ? horariosSelecionados : []}
                       diasRestritos={applyFiltersToSections ? diasRestritos : []}
                       horariosRestritos={applyFiltersToSections ? horariosRestritos : []}
+                      hasAnyVacancyData={hasAnyVacancyData}
+                      hideFull={applyFiltersToSections ? hideFull : false}
+                      vacancyFilter={applyFiltersToSections ? vacancyFilter : 'all'}
                     />
                   )}
                 </div>
@@ -1845,7 +1907,10 @@ function SectionsList({
   diasSelecionados,
   horariosSelecionados,
   diasRestritos,
-  horariosRestritos
+  horariosRestritos,
+  hasAnyVacancyData,
+  hideFull,
+  vacancyFilter
 }: { 
   courseCode: string;
   currentTerm: string | null;
@@ -1854,6 +1919,9 @@ function SectionsList({
   horariosSelecionados: string[];
   diasRestritos: string[];
   horariosRestritos: string[];
+  hasAnyVacancyData?: boolean;
+  hideFull?: boolean;
+  vacancyFilter?: 'all' | 'few' | 'many';
 }) {
   const { data: sections = [], isLoading } = useCourseSections(courseCode);
   const { data: allSections = [] } = useSections();
@@ -1873,7 +1941,8 @@ function SectionsList({
     
     // Se não há filtros aplicados, retorna todas as seções do semestre vigente
     if (diasSelecionados.length === 0 && horariosSelecionados.length === 0 && 
-        diasRestritos.length === 0 && horariosRestritos.length === 0) {
+        diasRestritos.length === 0 && horariosRestritos.length === 0 &&
+        !hideFull && (!vacancyFilter || vacancyFilter === 'all')) {
       return sectionsThisTerm;
     }
 
@@ -1885,6 +1954,17 @@ function SectionsList({
       .filter(Boolean);
     
     return sectionsThisTerm.filter(section => {
+      // Filtros de Vagas
+      if (hasAnyVacancyData) {
+        const seatsAccepted = (section as any)?.seats_accepted ?? 0;
+        const seatsCount = (section as any)?.seats_count ?? 0;
+        const freeSeats = Math.max(0, seatsCount - seatsAccepted);
+        
+        if (hideFull && freeSeats === 0 && seatsCount > 0) return false;
+        if (vacancyFilter === 'few' && (freeSeats > 10 || freeSeats === 0 || seatsCount === 0)) return false;
+        if (vacancyFilter === 'many' && (freeSeats <= 10 || seatsCount === 0)) return false;
+      }
+
       const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
       if (timeCodes.length === 0) return true; // Se não tem horários definidos, inclui
       
