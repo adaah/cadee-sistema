@@ -1807,6 +1807,36 @@ function SectionCard({ section, isCurrentSection = false }: { section: Section; 
   );
 }
 
+// Helper: retorna o selo de lotação baseado no percentual de ocupação
+function VacancyStatusBadge({ seatsAccepted, seatsCount }: { seatsAccepted: number; seatsCount: number }) {
+  if (seatsCount === 0) return null;
+  const pct = seatsCount > 0 ? (seatsAccepted / seatsCount) * 100 : 0;
+  const free = seatsCount - seatsAccepted;
+
+  if (free === 0) {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 inline-flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+        Lotada
+      </span>
+    );
+  }
+  if (pct >= 75) {
+    return (
+      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+        Poucas vagas ({free} livre{free !== 1 ? 's' : ''})
+      </span>
+    );
+  }
+  return (
+    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 inline-flex items-center gap-1">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+      Vagas disponíveis ({free} livre{free !== 1 ? 's' : ''})
+    </span>
+  );
+}
+
 // Componente para listar as seções de uma disciplina
 function SectionsList({ 
   courseCode, 
@@ -2073,130 +2103,180 @@ function SectionsList({
       
       {/* Lista de turmas disponíveis */}
       <div className="space-y-4">
-        {filteredSections.map((section, index) => {
-          const teachers = Array.isArray((section as any)?.teachers) 
-            ? (section as any).teachers 
-            : ((section as any)?.professor ? [(section as any).professor] : []);
-          const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
-          const seatsAccepted = (section as any)?.seats_accepted ?? 0;
-          const seatsCount = (section as any)?.seats_count ?? 0;
-          const isSelected = hasSection(section.id_ref);
-          const conflicts = getConflictsForSection(section);
-          const hasConflict = conflicts.length > 0;
-          const hasExclusive = Array.isArray((section as any)?.spots_reserved) && 
-            ((section as any).spots_reserved as any[]).some((r: any) => {
-              const t = ((r as any)?.program?.title || '').trim().toLowerCase();
-              return t && myProgramTitles.has(t);
-            });
-          const reservedRemaining = getReservedUnfilledForTitles(section as any, myProgramTitles);
-          const horariosParsed = parseTimeCodes(timeCodes);
+        {(() => {
+          // Detectar se o sistema de vagas está ativo: alguma turma tem seats_accepted > 0
+          const vacancySystemActive = filteredSections.some(
+            (s) => ((s as any)?.seats_accepted ?? 0) > 0 && ((s as any)?.seats_count ?? 0) > 0
+          );
 
-          const currentSection = getSectionForCourse(courseCode);
-          const isOtherSectionOfSameCourse = currentSection && currentSection.id_ref !== section.id_ref;
-          const isActuallyCurrentSection = currentSection?.id_ref === section.id_ref;
-          
-          return (
-            <div key={section.id_ref} className="border rounded-lg p-4 md:p-6 bg-muted/30">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-                <div className="flex gap-2 flex-wrap">
-                  <Badge variant="secondary" className="text-xs md:text-sm px-3 py-1">
-                    {(section as any)?.section_code || `Turma ${section.id_ref}`}
-                  </Badge>
-                  {isActuallyCurrentSection && (
-                    <Badge variant="default" className="text-xs md:text-sm px-3 py-1">
-                      Turma Atual
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className="text-xs md:text-sm px-3 py-1">
-                    {seatsCount === 0 ? 'Sem informação' : `${seatsCount} vagas`}
-                  </Badge>
-                  {isSelected && (
-                    <Badge variant="default" className="text-xs md:text-sm px-3 py-1">
-                      Selecionada
-                    </Badge>
-                  )}
-                                    {hasConflict && (
-                    <Badge variant="destructive" className="text-xs md:text-sm px-3 py-1">
-                      Conflito
-                    </Badge>
-                  )}
-                </div>
-                <Button
-                  size="sm"
-                  className="mt-2 md:mt-0 px-4 py-2 text-xs md:text-sm flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow"
-                  onClick={() => toggleSection(section, allSections)}
-                  disabled={isSelected && hasConflict}
-                  variant={isSelected ? "destructive" : "default"}
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  {isSelected ? 'Remover' : isOtherSectionOfSameCourse ? 'Substituir' : 'Adicionar'}
-                </Button>
-              </div>
+          return filteredSections.map((section) => {
+            const teachers = Array.isArray((section as any)?.teachers) 
+              ? (section as any).teachers 
+              : ((section as any)?.professor ? [(section as any).professor] : []);
+            const timeCodes = Array.isArray(section.time_codes) ? section.time_codes : [];
+            const seatsAccepted = (section as any)?.seats_accepted ?? 0;
+            const seatsCount = (section as any)?.seats_count ?? 0;
+            const progress = seatsCount > 0 ? Math.min(100, Math.round((seatsAccepted / seatsCount) * 100)) : 0;
+            const freeSeats = Math.max(0, seatsCount - seatsAccepted);
+            const isSelected = hasSection(section.id_ref);
+            const conflicts = getConflictsForSection(section);
+            const hasConflict = conflicts.length > 0;
+            const hasExclusive = Array.isArray((section as any)?.spots_reserved) && 
+              ((section as any).spots_reserved as any[]).some((r: any) => {
+                const t = ((r as any)?.program?.title || '').trim().toLowerCase();
+                return t && myProgramTitles.has(t);
+              });
+            const reservedRemaining = getReservedUnfilledForTitles(section as any, myProgramTitles);
+            const horariosParsed = parseTimeCodes(timeCodes);
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div className="space-y-2">
-                  <div>
-                    <span className="font-semibold text-muted-foreground">Docente:</span>
-                    <p className="mt-1">{teachers.length > 0 ? teachers.join(', ') : 'Professor(a) não definido'}</p>
+            const currentSection = getSectionForCourse(courseCode);
+            const isOtherSectionOfSameCourse = currentSection && currentSection.id_ref !== section.id_ref;
+            const isActuallyCurrentSection = currentSection?.id_ref === section.id_ref;
+            
+            // Cor da barra de progresso baseada na ocupação
+            const progressBarColor = freeSeats === 0
+              ? 'bg-red-500'
+              : progress >= 75
+              ? 'bg-amber-500'
+              : 'bg-green-500';
+            
+            return (
+              <div key={section.id_ref} className="border rounded-lg p-4 md:p-6 bg-muted/30">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="secondary" className="text-xs md:text-sm px-3 py-1">
+                      {(section as any)?.section_code || `Turma ${section.id_ref}`}
+                    </Badge>
+                    {isActuallyCurrentSection && (
+                      <Badge variant="default" className="text-xs md:text-sm px-3 py-1">
+                        Turma Atual
+                      </Badge>
+                    )}
+                    {/* Selo de vagas: quando sistema inativo mostra contagem, quando ativo mostra status */}
+                    {!vacancySystemActive && (
+                      <Badge variant="outline" className="text-xs md:text-sm px-3 py-1">
+                        {seatsCount === 0 ? 'Sem informação' : `${seatsCount} vagas`}
+                      </Badge>
+                    )}
+                    {vacancySystemActive && (
+                      <VacancyStatusBadge seatsAccepted={seatsAccepted} seatsCount={seatsCount} />
+                    )}
+                    {isSelected && (
+                      <Badge variant="default" className="text-xs md:text-sm px-3 py-1">
+                        Selecionada
+                      </Badge>
+                    )}
+                    {hasConflict && (
+                      <Badge variant="destructive" className="text-xs md:text-sm px-3 py-1">
+                        Conflito
+                      </Badge>
+                    )}
                   </div>
-                  <div>
-                    <span className="font-semibold text-muted-foreground">Período:</span>
-                    <p className="mt-1">{(section as any)?.period || 'Não informado'}</p>
-                  </div>
+                  <Button
+                    size="sm"
+                    className="mt-2 md:mt-0 px-4 py-2 text-xs md:text-sm flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded shadow"
+                    onClick={() => toggleSection(section, allSections)}
+                    disabled={isSelected && hasConflict}
+                    variant={isSelected ? "destructive" : "default"}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    {isSelected ? 'Remover' : isOtherSectionOfSameCourse ? 'Substituir' : 'Adicionar'}
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <div>
-                    <span className="font-semibold text-muted-foreground">Horários:</span>
-                    <p className="mt-1">{timeCodes.length > 0 ? timeCodes.join(', ') : 'Horário não definido'}</p>
-                    <div className="mt-1 grid gap-1" style={{ gridTemplateColumns: horariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
-                      {horariosParsed.length > 0 ? (
-                        horariosParsed.map((h, idx) => (
-                          <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono min-h-[40px] flex flex-col items-start justify-center">
-                            <span className="font-semibold">{h.dia}</span>
-                            <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded">Horário não informado</span>
-                      )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <div>
+                      <span className="font-semibold text-muted-foreground">Docente:</span>
+                      <p className="mt-1">{teachers.length > 0 ? teachers.join(', ') : 'Professor(a) não definido'}</p>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-muted-foreground">Período:</span>
+                      <p className="mt-1">{(section as any)?.period || 'Não informado'}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <span className="font-semibold text-muted-foreground">Horários:</span>
+                      <p className="mt-1">{timeCodes.length > 0 ? timeCodes.join(', ') : 'Horário não definido'}</p>
+                      <div className="mt-1 grid gap-1" style={{ gridTemplateColumns: horariosParsed.length <= 4 ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)' }}>
+                        {horariosParsed.length > 0 ? (
+                          horariosParsed.map((h, idx) => (
+                            <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono min-h-[40px] flex flex-col items-start justify-center">
+                              <span className="font-semibold">{h.dia}</span>
+                              <span className="text-[10px]">{h.horarioInicio} - {h.horarioFim}</span>
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-red-500 bg-red-50 px-2 py-0.5 rounded">Horário não informado</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {hasExclusive && reservedRemaining > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-primary text-primary-foreground inline-flex items-center gap-1 cursor-default">
-                          <Star className="w-3 h-3" /> Reservado para o curso {reservedRemaining} vagas
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div>Vagas reservadas ao(s) seu(s) programa(s) selecionado(s).</div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                {/* Contador de vagas — aparece para TODAS as turmas quando sistema ativo */}
+                {vacancySystemActive && (
+                  <div className="mt-4 pt-3 border-t border-border/50">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                      <span className="flex items-center gap-1">
+                        <Users className="w-3 h-3" />
+                        {seatsCount === 0
+                          ? 'Vagas não informadas'
+                          : `${seatsAccepted} preenchida${seatsAccepted !== 1 ? 's' : ''} · ${freeSeats} livre${freeSeats !== 1 ? 's' : ''} de ${seatsCount}`}
+                      </span>
+                      {seatsCount > 0 && (
+                        <span className="font-medium">{progress}%</span>
+                      )}
+                    </div>
+                    {seatsCount > 0 && (
+                      <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${progressBarColor}`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
                 )}
-                {!hasExclusive && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground inline-flex items-center gap-1 cursor-default">
-                          Sem reservas para o curso
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div>Esta turma não possui vagas reservadas para o seu curso.</div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+
+                {/* Selos de reserva — só mostrar quando sistema de vagas NÃO estiver ativo */}
+                {!vacancySystemActive && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {hasExclusive && reservedRemaining > 0 && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-primary text-primary-foreground inline-flex items-center gap-1 cursor-default">
+                              <Star className="w-3 h-3" /> Reservado para o curso {reservedRemaining} vagas
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div>Vagas reservadas ao(s) seu(s) programa(s) selecionado(s).</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {!hasExclusive && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground inline-flex items-center gap-1 cursor-default">
+                              Sem reservas para o curso
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div>Esta turma não possui vagas reservadas para o seu curso.</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
-          );
-        })}
+            );
+          });
+        })()}
       </div>
     </div>
   );
