@@ -1,4 +1,4 @@
-import { Home, BookOpen, Calendar, MoreHorizontal } from 'lucide-react';
+import { Home, BookOpen, Calendar, SlidersHorizontal } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { cn } from '@/lib/utils';
 
@@ -6,7 +6,7 @@ const menuItems = [
   { title: 'Início', url: '/', icon: Home },
   { title: 'Disciplinas', url: '/disciplinas', icon: BookOpen },
   { title: 'Planejador', url: '/planejador', icon: Calendar },
-  { title: 'Configurações', url: '/configuracoes', icon: MoreHorizontal },
+  { title: 'Ajustes', url: '/configuracoes', icon: SlidersHorizontal },
 ];
 
 export function MobileNav() {

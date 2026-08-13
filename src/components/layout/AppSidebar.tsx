@@ -1,4 +1,4 @@
-import { Home, BookOpen, Calendar, Settings, Sun, Moon, Github, Layers } from 'lucide-react';
+import { Home, BookOpen, Calendar, SlidersHorizontal, Sun, Moon, Github, Layers } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useApp } from '@/contexts/AppContext';
 import { cn } from '@/lib/utils';
@@ -7,7 +7,7 @@ const menuItems = [
   { title: 'Início', url: '/', icon: Home },
   { title: 'Disciplinas', url: '/disciplinas', icon: BookOpen },
   { title: 'Planejador', url: '/planejador', icon: Calendar },
-  { title: 'Configurações', url: '/configuracoes', icon: Settings },
+  { title: 'Ajustes', url: '/configuracoes', icon: SlidersHorizontal },
 ];
 
 export function AppSidebar() {

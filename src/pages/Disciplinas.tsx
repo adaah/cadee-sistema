@@ -163,8 +163,15 @@ const Disciplinas = () => {
       const eqs = extractEquivalentBaseCodes(d);
       if (eqs.has(base)) out.add(key);
     }
+    // Adiciona verificação na lista de cursos do currículo (síncrono e imediato)
+    for (const c of courses) {
+      const cBase = getBlockCourseBaseCode(c.code);
+      if (cBase === base) continue;
+      const eqs = extractEquivalentBaseCodes(c as any);
+      if (eqs.has(base)) out.add(cBase);
+    }
     return out;
-  }, [detailsCache, getCachedDetail]);
+  }, [detailsCache, getCachedDetail, courses]);
 
   // Verifica equivalência on-demand (usado em eventos/UI — pode disparar fetch)
   const getRelatedBaseCodesAsync = useCallback(async (code: string): Promise<Set<string>> => {
@@ -267,14 +274,28 @@ const Disciplinas = () => {
     const baseCode = getBlockCourseBaseCode(code);
     
     // Verifica se o código base está diretamente selecionado
-    // Isso já cobre variantes de bloco (MATB59.0 -> MATB59)
     if (selectedBaseCodes.has(baseCode)) return true;
     
-    // Verifica equivalentes (apenas as já carregadas no cache)
-    if (equivalentCodesToSelected.has(baseCode)) return true;
+    // Verifica equivalentes (com a mesma lógica robusta do isCourseCompleted)
+    if (equivalentCodesToSelected.has(baseCode)) {
+      const relatedBases = getRelatedBaseCodesSync(baseCode);
+      for (const r of relatedBases) {
+        if (r === baseCode) continue;
+        if (hasAnyFailedOrDropped(r)) continue;
+        
+        // Encontra os códigos concretos para essa base e checa
+        const candidates: string[] = [r];
+        for (const c of courses) {
+          if (getBlockCourseBaseCode(c.code) === r) candidates.push(c.code);
+        }
+        for (const cCode of candidates) {
+          if (selectedBaseCodes.has(getBlockCourseBaseCode(cCode))) return true;
+        }
+      }
+    }
     
     return false;
-  }, [selectedBaseCodes, equivalentCodesToSelected, hasAnyFailedOrDropped]);
+  }, [selectedBaseCodes, equivalentCodesToSelected, hasAnyFailedOrDropped, getRelatedBaseCodesSync, courses]);
 
   const isCourseCompleted = useCallback((code: string): boolean => {
     const baseCode = getBlockCourseBaseCode(code);
