@@ -270,58 +270,26 @@ const Disciplinas = () => {
   }, [getEquivalentCodesForCourseSync, getDisciplineStatus, courses]);
 
   const isCourseSelected = useCallback((code: string): boolean => {
-    if (hasAnyFailedOrDropped(code)) return false;
     const baseCode = getBlockCourseBaseCode(code);
     
-    // Verifica se o código base está diretamente selecionado
     if (selectedBaseCodes.has(baseCode)) return true;
-    
-    // Verifica equivalentes (com a mesma lógica robusta do isCourseCompleted)
-    if (equivalentCodesToSelected.has(baseCode)) {
-      const relatedBases = getRelatedBaseCodesSync(baseCode);
-      for (const r of relatedBases) {
-        if (r === baseCode) continue;
-        if (hasAnyFailedOrDropped(r)) continue;
-        
-        // Encontra os códigos concretos para essa base e checa
-        const candidates: string[] = [r];
-        for (const c of courses) {
-          if (getBlockCourseBaseCode(c.code) === r) candidates.push(c.code);
-        }
-        for (const cCode of candidates) {
-          if (selectedBaseCodes.has(getBlockCourseBaseCode(cCode))) return true;
-        }
-      }
-    }
+    if (equivalentCodesToSelected.has(baseCode)) return true;
     
     return false;
-  }, [selectedBaseCodes, equivalentCodesToSelected, hasAnyFailedOrDropped, getRelatedBaseCodesSync, courses]);
+  }, [selectedBaseCodes, equivalentCodesToSelected]);
 
   const isCourseCompleted = useCallback((code: string): boolean => {
-    const baseCode = getBlockCourseBaseCode(code);
     if (hasAnyFailedOrDropped(code)) return false;
-    // Check direct completion first
+    const baseCode = getBlockCourseBaseCode(code);
+    
     const status = getDisciplineStatus(code);
     const directCompleted = completedDisciplines.includes(code) || status === 'approved';
     if (directCompleted) return true;
-    // Check equivalents cached (apenas o que já temos — o resto dispara só quando necessário)
-    if (equivalentCodesToCompleted.has(baseCode)) {
-      const relatedBases = getRelatedBaseCodesSync(baseCode);
-      for (const r of relatedBases) {
-        if (r === baseCode) continue;
-        if (hasAnyFailedOrDropped(r)) continue;
-        // Encontra os códigos concretos (cursos do programa) para essa base e checa
-        const candidates: string[] = [r];
-        for (const c of courses) if (getBlockCourseBaseCode(c.code) === r) candidates.push(c.code);
-        for (const cc of candidates) {
-          const eqStatus = getDisciplineStatus(cc);
-          if (completedDisciplines.includes(cc) || eqStatus === 'approved') return true;
-        }
-      }
-      return true;
-    }
+    
+    if (equivalentCodesToCompleted.has(baseCode)) return true;
+    
     return false;
-  }, [completedDisciplines, equivalentCodesToCompleted, hasAnyFailedOrDropped, getDisciplineStatus, getRelatedBaseCodesSync, courses]);
+  }, [completedDisciplines, equivalentCodesToCompleted, hasAnyFailedOrDropped, getDisciplineStatus]);
 
   // Toggle completed for a course and all its equivalents (async, usa lazy fetch)
   const handleToggleCompletedForAllEquivalents = useCallback(async (code: string) => {

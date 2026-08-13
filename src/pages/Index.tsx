@@ -54,57 +54,44 @@ const Index = () => {
 
   const scheduledCount = plannedDisciplines.length;
 
-  const resolveEquivalentCourse = (code: string, section: any) => {
-    let course = coursesByCode.get(code);
-    if (!course) {
-      course = courses.find(c => 
-        c.equivalents?.includes(code) || 
-        section.course?.equivalents?.includes(c.code)
-      );
-    }
-    return course || section.course;
-  };
-
   const workloadBreakdown = useMemo(() => {
     const plannedCourses = plannedDisciplines
-      .map(([code, section]) => resolveEquivalentCourse(code, section))
+      .map(([code]) => coursesByCode.get(code))
       .filter((c): c is NonNullable<typeof c> => !!c);
-    
-    const byCategory = sumWorkloadByCategory(plannedCourses as any[]);
+    const byCategory = sumWorkloadByCategory(plannedCourses);
     return {
       mandatory: byCategory.mandatory,
       elective: byCategory.elective,
       complementary: byCategory.complementary,
       total: byCategory.mandatory + byCategory.elective + byCategory.complementary,
     };
-  }, [plannedDisciplines, coursesByCode, courses]);
+  }, [plannedDisciplines, coursesByCode]);
 
   const disciplinesCount = useMemo(() => {
     let mandatory = 0;
     let elective = 0;
     let offered = 0;
 
-    for (const [code, section] of plannedDisciplines) {
-      const courseData = resolveEquivalentCourse(code, section);
-      
-      if (courseData) {
-        const isOffered = (courseData.level || '').includes('Ofertada');
+    for (const [code] of plannedDisciplines) {
+      const course = coursesByCode.get(code);
+      if (course) {
+        const isOffered = (course.level || '').includes('Ofertada');
         if (isOffered) offered++;
         
-        const levelRaw = courseData.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim().toLowerCase() || '';
+        const levelRaw = course.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim().toLowerCase() || '';
         if (levelRaw.includes('optativ')) {
           elective++;
         } else if (levelRaw.includes('semestre')) {
           mandatory++;
         } else {
-          const t = (courseData.type || '').toLowerCase();
+          const t = (course.type || '').toLowerCase();
           if (t.includes('optativa')) elective++;
           else mandatory++; // Fallback
         }
       }
     }
     return { mandatory, elective, offered };
-  }, [plannedDisciplines, coursesByCode, courses]);
+  }, [plannedDisciplines, coursesByCode]);
 
   const renderTabContent = () => {
     if (activeTab === 'progress') {
