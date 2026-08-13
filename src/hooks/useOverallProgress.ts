@@ -177,29 +177,41 @@ export function useOverallProgress(): OverallProgressData {
   }, [manualWorkloadBonus, curriculumRequirements, semesterOutcomes, localStorageKey]);
 
   const totalRequiredHours = progressData.mandatory.total + progressData.electives.total + progressData.complementary.total;
+  
+  // Calcular horas efetivas limitadas ao teto de cada categoria
+  const cappedMandatory = Math.min(progressData.mandatory.completed, progressData.mandatory.total);
+  const cappedElectives = Math.min(progressData.electives.completed, progressData.electives.total);
+  const cappedComplementary = Math.min(progressData.complementary.completed, progressData.complementary.total);
+  const effectiveTotalHours = cappedMandatory + cappedElectives + cappedComplementary;
+
   const overallProgress = totalRequiredHours > 0 
-    ? (progressData.totalHours / totalRequiredHours) * 100 
+    ? (effectiveTotalHours / totalRequiredHours) * 100 
     : 0;
 
-  // Calcular previsão com disciplinas planejadas
-  const projectedTotalHours = progressData.totalHours + plannedWorkload.mandatory + plannedWorkload.elective + plannedWorkload.complementary;
+  // Calcular previsão com disciplinas planejadas limitando ao teto
   const projectedMandatoryCompleted = progressData.mandatory.completed + plannedWorkload.mandatory;
   const projectedElectivesCompleted = progressData.electives.completed + plannedWorkload.elective;
   const projectedComplementaryCompleted = progressData.complementary.completed + plannedWorkload.complementary;
+  
+  const cappedProjectedMandatory = Math.min(projectedMandatoryCompleted, progressData.mandatory.total);
+  const cappedProjectedElectives = Math.min(projectedElectivesCompleted, progressData.electives.total);
+  const cappedProjectedComplementary = Math.min(projectedComplementaryCompleted, progressData.complementary.total);
+  const effectiveProjectedTotalHours = cappedProjectedMandatory + cappedProjectedElectives + cappedProjectedComplementary;
+
   const projectedOverallProgress = totalRequiredHours > 0 
-    ? (projectedTotalHours / totalRequiredHours) * 100 
+    ? (effectiveProjectedTotalHours / totalRequiredHours) * 100 
     : 0;
 
   return {
     overallProgress,
-    totalHours: progressData.totalHours,
+    totalHours: effectiveTotalHours,
     totalRequiredHours,
     mandatory: progressData.mandatory,
     electives: progressData.electives,
     complementary: progressData.complementary,
     projected: {
       overallProgress: projectedOverallProgress,
-      totalHours: projectedTotalHours,
+      totalHours: effectiveProjectedTotalHours,
       mandatory: { completed: projectedMandatoryCompleted, total: progressData.mandatory.total },
       electives: { completed: projectedElectivesCompleted, total: progressData.electives.total },
       complementary: { completed: projectedComplementaryCompleted, total: progressData.complementary.total },

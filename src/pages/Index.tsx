@@ -237,7 +237,7 @@ const Index = () => {
                       <span className="text-[10px] sm:text-xs text-muted-foreground">Obrigatórias</span>
                       <span className="text-xs font-semibold text-card-foreground">
                         {overallProgress.projected.mandatory.total > 0 
-                          ? ((overallProgress.projected.mandatory.completed / overallProgress.projected.mandatory.total) * 100).toFixed(1) 
+                          ? Math.min(100, (overallProgress.projected.mandatory.completed / overallProgress.projected.mandatory.total) * 100).toFixed(1) 
                           : 0}%
                       </span>
                     </div>
@@ -249,8 +249,11 @@ const Index = () => {
                           : 0, 100)}%` }}
                       />
                     </div>
-                    <p className="text-[9px] text-muted-foreground mt-0.5">
-                      {overallProgress.projected.mandatory.completed}h / {overallProgress.projected.mandatory.total}h
+                    <p className="text-[9px] text-muted-foreground mt-0.5 flex justify-between">
+                      <span>{Math.min(overallProgress.projected.mandatory.completed, overallProgress.projected.mandatory.total)}h / {overallProgress.projected.mandatory.total}h</span>
+                      {overallProgress.projected.mandatory.completed > overallProgress.projected.mandatory.total && (
+                        <span className="text-blue-600 dark:text-blue-400 font-medium">+{overallProgress.projected.mandatory.completed - overallProgress.projected.mandatory.total}h excedentes</span>
+                      )}
                     </p>
                   </div>
 
@@ -260,7 +263,7 @@ const Index = () => {
                       <span className="text-[10px] sm:text-xs text-muted-foreground">Optativas</span>
                       <span className="text-xs font-semibold text-card-foreground">
                         {overallProgress.projected.electives.total > 0 
-                          ? ((overallProgress.projected.electives.completed / overallProgress.projected.electives.total) * 100).toFixed(1) 
+                          ? Math.min(100, (overallProgress.projected.electives.completed / overallProgress.projected.electives.total) * 100).toFixed(1) 
                           : 0}%
                       </span>
                     </div>
@@ -272,8 +275,11 @@ const Index = () => {
                           : 0, 100)}%` }}
                       />
                     </div>
-                    <p className="text-[9px] text-muted-foreground mt-0.5">
-                      {overallProgress.projected.electives.completed}h / {overallProgress.projected.electives.total}h
+                    <p className="text-[9px] text-muted-foreground mt-0.5 flex justify-between">
+                      <span>{Math.min(overallProgress.projected.electives.completed, overallProgress.projected.electives.total)}h / {overallProgress.projected.electives.total}h</span>
+                      {overallProgress.projected.electives.completed > overallProgress.projected.electives.total && (
+                        <span className="text-purple-600 dark:text-purple-400 font-medium">+{overallProgress.projected.electives.completed - overallProgress.projected.electives.total}h excedentes</span>
+                      )}
                     </p>
                   </div>
                 </div>

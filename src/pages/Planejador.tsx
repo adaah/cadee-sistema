@@ -1821,7 +1821,7 @@ function VacancyStatusBadge({ seatsAccepted, seatsCount }: { seatsAccepted: numb
       </span>
     );
   }
-  if (pct >= 75) {
+  if (free <= 10) {
     return (
       <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
@@ -2133,10 +2133,10 @@ function SectionsList({
             const isOtherSectionOfSameCourse = currentSection && currentSection.id_ref !== section.id_ref;
             const isActuallyCurrentSection = currentSection?.id_ref === section.id_ref;
             
-            // Cor da barra de progresso baseada na ocupação
+            // Cor da barra de progresso baseada nas vagas livres
             const progressBarColor = freeSeats === 0
               ? 'bg-red-500'
-              : progress >= 75
+              : freeSeats <= 10
               ? 'bg-amber-500'
               : 'bg-green-500';
             

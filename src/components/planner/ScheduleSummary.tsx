@@ -311,18 +311,18 @@ export function ScheduleSummary() {
                                   <div className="flex items-start gap-2 text-xs text-muted-foreground">
                                     <Clock className="w-3 h-3 mt-0.5 shrink-0" />
                                     {formattedSchedules.length > 0 ? (
-                                      <div className="grid gap-1" style={{ gridTemplateColumns: formattedSchedules.length <= 4 ? 'repeat(4, 1fr)' : (formattedSchedules.length <= 6 ? 'repeat(3, 1fr)' : 'repeat(4, 1fr)') }}>
-                                        {formattedSchedules.map((schedule, idx) => {
-                                          const [day, time] = schedule.split(' ');
-                                          return (
-                                            <span key={idx} className="inline-block bg-muted px-2 py-1 rounded text-xs font-mono text-center min-h-[40px] flex flex-col items-center justify-center">
-                                              <span className="font-semibold">{day}</span>
-                                              <span className="text-[10px]">{time}</span>
-                                            </span>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
+                                        <div className="grid gap-1 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 w-full">
+                                          {formattedSchedules.map((schedule, idx) => {
+                                            const [day, time] = schedule.split(' ');
+                                            return (
+                                              <span key={idx} className="bg-muted px-1.5 py-1 rounded text-xs font-mono text-center min-h-[40px] flex flex-col items-center justify-center min-w-0">
+                                                <span className="font-semibold truncate w-full">{day}</span>
+                                                <span className="text-[10px] truncate w-full">{time}</span>
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
                                       <span>Horário a definir</span>
                                     )}
                                   </div>

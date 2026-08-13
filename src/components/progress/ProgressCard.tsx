@@ -12,7 +12,9 @@ interface ProgressCardProps {
 }
 
 export function ProgressCard({ title, current, total, showInfo = false, infoText = '', isEstimated = false }: ProgressCardProps) {
-  const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+  const rawPercentage = total > 0 ? (current / total) * 100 : 0;
+  const percentage = Math.min(100, Math.round(rawPercentage));
+  const excess = current > total ? current - total : 0;
 
   return (
     <div className="bg-card rounded-lg border border-border p-4">
@@ -51,12 +53,16 @@ export function ProgressCard({ title, current, total, showInfo = false, infoText
         </span>
       </div>
       <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-        <span>{current} / {total} horas</span>
-        {isEstimated && (
+        <span>{Math.min(current, total)} / {total} horas</span>
+        {excess > 0 ? (
+          <span className="text-primary font-medium">
+            +{excess}h excedentes
+          </span>
+        ) : isEstimated ? (
           <span className="text-amber-600 dark:text-amber-400 font-medium">
             Estimado
           </span>
-        )}
+        ) : null}
       </div>
       <Progress value={percentage} className={`h-2 ${isEstimated ? '[&>div]:bg-amber-500' : ''}`} />
     </div>
