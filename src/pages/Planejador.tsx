@@ -116,6 +116,15 @@ const DisciplineCard = memo(({
   const { completedDisciplines } = useApp();
   const isCompleted = completedDisciplines.includes(course.code);
   const isOffered = (course.level || '').includes('Ofertada');
+  const levelDisplayRaw = course.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim();
+  let levelDisplay = levelDisplayRaw;
+  if (levelDisplayRaw) {
+    if (levelDisplayRaw.toLowerCase().includes('optativ')) {
+      levelDisplay = 'Optativa';
+    } else if (levelDisplayRaw.toLowerCase().includes('semestre')) {
+      levelDisplay = `Obrigatória - ${levelDisplayRaw}`;
+    }
+  }
   
   return (
     <div 
@@ -132,19 +141,24 @@ const DisciplineCard = memo(({
             Cursada
           </Badge>
         )}
+        {levelDisplay && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-background">
+            {levelDisplay}
+          </Badge>
+        )}
+        {isOffered && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-primary/5">
+            Ofertada
+          </Badge>
+        )}
         {conflictCodes.length > 0 && conflictCodes.map((code) => (
           <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5">
             Choque com {code}
           </Badge>
         ))}
       </div>
-      <div className="font-semibold text-xs md:text-sm mb-1 flex items-center gap-2 flex-wrap">
+      <div className="font-semibold text-xs md:text-sm mb-1 pr-16 flex items-center gap-2 flex-wrap">
         <span>{course.code}</span>
-        {isOffered && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-            Ofertada
-          </Badge>
-        )}
       </div>
       <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
         {course.name}
@@ -176,6 +190,15 @@ const BlockDisciplineGroupCard = memo(({
   const { completedDisciplines } = useApp();
   const allCompleted = group.courses.every((c) => completedDisciplines.includes(c.code));
   const isOffered = group.courses.some((c) => (c.level || '').includes('Ofertada'));
+  const firstLevelRaw = group.courses.find((c) => c.level && c.level.trim() !== '' && c.level !== 'Ofertada ao curso')?.level?.replace(' (Ofertada)', '')?.trim();
+  let firstLevel = firstLevelRaw;
+  if (firstLevelRaw) {
+    if (firstLevelRaw.toLowerCase().includes('optativ')) {
+      firstLevel = 'Optativa';
+    } else if (firstLevelRaw.toLowerCase().includes('semestre')) {
+      firstLevel = `Obrigatória - ${firstLevelRaw}`;
+    }
+  }
 
   return (
     <div
@@ -187,24 +210,29 @@ const BlockDisciplineGroupCard = memo(({
       <div className="p-3 md:p-4 bg-muted/30 border-b">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="font-semibold text-xs md:text-sm mb-1 flex items-center gap-2 flex-wrap">
+            <div className="font-semibold text-xs md:text-sm mb-1 pr-2 flex items-center gap-2 flex-wrap">
               <span>{group.baseCode}</span>
-              {isOffered && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                  Ofertada
-                </Badge>
-              )}
             </div>
-            <div className="text-xs text-muted-foreground line-clamp-2">{group.name}</div>
+            <div className="text-xs text-muted-foreground line-clamp-2 pr-2">{group.name}</div>
           </div>
-          <div className="flex flex-col gap-1 items-end">
+          <div className="flex flex-col gap-1 items-end shrink-0">
             {allCompleted && (
-              <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5 shrink-0">
+              <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5">
                 Cursada
               </Badge>
             )}
+            {firstLevel && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-background">
+                {firstLevel}
+              </Badge>
+            )}
+            {isOffered && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-primary/5">
+                Ofertada
+              </Badge>
+            )}
             {conflictCodes.length > 0 && conflictCodes.map((code) => (
-              <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5 shrink-0">
+              <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5">
                 Choque com {code}
               </Badge>
             ))}
@@ -364,6 +392,7 @@ const Planejador = () => {
   const [showCompleted, setShowCompleted] = useState(false);
   const [hideFull, setHideFull] = useState(false);
   const [vacancyFilter, setVacancyFilter] = useState<'all' | 'few' | 'many'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'mandatory' | 'optional' | 'offered'>('all');
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([]);
   const [horariosSelecionados, setHorariosSelecionados] = useState<string[]>([]);
   const [logicaFiltroDia, setLogicaFiltroDia] = useState<'OU' | 'E'>('OU');
@@ -463,6 +492,24 @@ const Planejador = () => {
       });
     }
 
+    if (typeFilter !== 'all') {
+      result = result.filter(course => {
+        const typeRaw = (course.type || '').toLowerCase();
+        const levelRaw = (course.level || '').toLowerCase();
+        
+        if (typeFilter === 'mandatory') {
+           return levelRaw.includes('semestre') && !levelRaw.includes('ofertada');
+        }
+        if (typeFilter === 'optional') {
+           return typeRaw.includes('optat') || levelRaw.includes('optat');
+        }
+        if (typeFilter === 'offered') {
+           return levelRaw.includes('ofertada');
+        }
+        return true;
+      });
+    }
+
     const hasFilters = diasSelecionados.length > 0 || horariosSelecionados.length > 0 || 
       diasRestritos.length > 0 || horariosRestritos.length > 0 || hideFull || vacancyFilter !== 'all';
 
@@ -547,6 +594,7 @@ const Planejador = () => {
     showCompleted,
     hideFull,
     vacancyFilter,
+    typeFilter,
     completedDisciplines,
     diasSelecionados,
     horariosSelecionados,
@@ -841,83 +889,90 @@ const Planejador = () => {
                 </span>
               </div>
 
-              {/* Barra de busca e filtros */}
-              <div className="mb-2 md:mb-3 flex flex-col md:flex-row md:items-center md:gap-3 gap-2">
-                <input
-                  type="text"
-                  placeholder="Buscar disciplina..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground border-border md:w-auto"
-                  style={{ minWidth: 0 }}
-                />
-                <button
-                  type="button"
-                  className="relative flex items-center gap-1 border rounded px-3 py-2 text-sm bg-muted hover:bg-muted/70 transition"
-                  onClick={() => setFiltroModalOpen(true)}
-                >
-                  <Filter className="w-4 h-4" />
-                  Filtrar
-                  {hasActiveFilters && (
-                    <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-blue-500 shadow" aria-label="Filtros ativos"></span>
-                  )}
-                </button>
-              </div>
+              {/* Barra de busca e filtros otimizada */}
+              <div className="mb-4">
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Buscar disciplina..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  />
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2 max-w-[100vw] overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-medium transition-colors relative"
+                    onClick={() => setFiltroModalOpen(true)}
+                  >
+                    <Filter className="w-4 h-4" />
+                    Dias / Horários
+                    {hasActiveFilters && (
+                      <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-primary shadow" aria-label="Filtros ativos"></span>
+                    )}
+                  </button>
 
-              {/* Botão de mostrar/ocultar cursadas e filtros de vagas */}
-              {(completedDisciplines.length > 0 || hasAnyVacancyData) && (
-                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
+                    <SelectTrigger className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-medium h-auto w-auto">
+                      <span>Tipo: {typeFilter === 'all' ? 'Todas' : typeFilter === 'mandatory' ? 'Obrigatórias' : typeFilter === 'optional' ? 'Optativas' : 'Ofertadas'}</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas</SelectItem>
+                      <SelectItem value="mandatory">Obrigatórias</SelectItem>
+                      <SelectItem value="optional">Optativas</SelectItem>
+                      <SelectItem value="offered">Ofertadas</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {hasAnyVacancyData && (
+                    <Select value={vacancyFilter} onValueChange={(v: any) => setVacancyFilter(v)}>
+                      <SelectTrigger className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-medium h-auto w-auto">
+                        <span>Vagas: {vacancyFilter === 'all' ? 'Todas' : vacancyFilter === 'few' ? 'Poucas' : 'Muitas'}</span>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas as vagas</SelectItem>
+                        <SelectItem value="few">Poucas vagas</SelectItem>
+                        <SelectItem value="many">Muitas vagas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+
                   {completedDisciplines.length > 0 && (
                     <button
                       type="button"
-                      className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-card hover:bg-muted/70 transition-colors"
                       onClick={() => setShowCompleted(!showCompleted)}
+                      className={cn(
+                        "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors",
+                        !showCompleted 
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm" 
+                          : "bg-card text-muted-foreground border-border hover:bg-accent"
+                      )}
                     >
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                      {showCompleted ? 'Ocultar cursadas' : 'Mostrar cursadas'}
+                      <Eye className="w-3.5 h-3.5" />
+                      Ocultar Cursadas
                     </button>
                   )}
-                  
+
                   {hasAnyVacancyData && (
-                    <>
-                      <button
-                        type="button"
-                        className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 text-sm bg-card hover:bg-muted/70 transition-colors"
-                        onClick={() => setHideFull(!hideFull)}
-                      >
-                        <Eye className="w-4 h-4 text-muted-foreground" />
-                        {hideFull ? 'Mostrar lotadas' : 'Ocultar lotadas'}
-                      </button>
-                      <div className="flex items-center gap-2 ml-1">
-                        <span className="text-xs font-medium text-muted-foreground hidden sm:inline-block">Filtro de vagas disponíveis:</span>
-                        <div className="flex items-center bg-card border border-border rounded-lg overflow-hidden text-sm">
-                          <button
-                            type="button"
-                            className={cn("px-3 py-1.5 transition-colors", vacancyFilter === 'all' ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50")}
-                            onClick={() => setVacancyFilter('all')}
-                          >
-                            Todas
-                          </button>
-                          <button
-                            type="button"
-                            className={cn("px-3 py-1.5 transition-colors border-l border-border", vacancyFilter === 'few' ? "bg-warning/10 font-medium text-warning" : "text-muted-foreground hover:bg-muted/50")}
-                            onClick={() => setVacancyFilter('few')}
-                          >
-                            Poucas vagas
-                          </button>
-                          <button
-                            type="button"
-                            className={cn("px-3 py-1.5 transition-colors border-l border-border", vacancyFilter === 'many' ? "bg-success/10 font-medium text-success" : "text-muted-foreground hover:bg-muted/50")}
-                            onClick={() => setVacancyFilter('many')}
-                          >
-                            Muitas vagas
-                          </button>
-                        </div>
-                      </div>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => setHideFull(!hideFull)}
+                      className={cn(
+                        "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors",
+                        hideFull 
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm" 
+                          : "bg-card text-muted-foreground border-border hover:bg-accent"
+                      )}
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      Ocultar Lotadas
+                    </button>
                   )}
                 </div>
-              )}
+              </div>
 
               <div className="max-h-[600px] overflow-y-auto">
                 <div className="grid grid-cols-1 gap-3 md:gap-4">
@@ -1877,7 +1932,7 @@ function VacancyStatusBadge({ seatsAccepted, seatsCount }: { seatsAccepted: numb
 
   if (free === 0) {
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 inline-flex items-center gap-1">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 inline-flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
         Lotada
       </span>
@@ -1885,16 +1940,16 @@ function VacancyStatusBadge({ seatsAccepted, seatsCount }: { seatsAccepted: numb
   }
   if (free <= 10) {
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1">
+      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
-        Poucas vagas ({free} livre{free !== 1 ? 's' : ''})
+        {free} vaga{free !== 1 ? 's' : ''}
       </span>
     );
   }
   return (
-    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 inline-flex items-center gap-1">
+    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 inline-flex items-center gap-1">
       <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-      Vagas disponíveis ({free} livre{free !== 1 ? 's' : ''})
+      {free} vaga{free !== 1 ? 's' : ''}
     </span>
   );
 }

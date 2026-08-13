@@ -171,10 +171,11 @@ export function mergeProgramCoursesWithOffered(
       ? resolveBlockCourseName(code, indexByCode, section.course?.name)
       : (section.course?.name ?? idx?.name ?? code);
 
+    const levelFromApi = idx?.level?.replace('Nível', 'Semestre');
     byCode.set(code, {
       code,
       name,
-      level: idx?.level?.replace('Nível', 'Semestre') ?? 'Ofertada ao curso',
+      level: levelFromApi ? `${levelFromApi} (Ofertada)` : 'Ofertada ao curso',
       type: idx?.type ?? '',
       credits: (idx as { credits?: number })?.credits,
       workload: (idx as { workload?: number })?.workload,
