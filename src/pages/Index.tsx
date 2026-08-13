@@ -54,18 +54,57 @@ const Index = () => {
 
   const scheduledCount = plannedDisciplines.length;
 
+  const resolveEquivalentCourse = (code: string, section: any) => {
+    let course = coursesByCode.get(code);
+    if (!course) {
+      course = courses.find(c => 
+        c.equivalents?.includes(code) || 
+        section.course?.equivalents?.includes(c.code)
+      );
+    }
+    return course || section.course;
+  };
+
   const workloadBreakdown = useMemo(() => {
     const plannedCourses = plannedDisciplines
-      .map(([code]) => coursesByCode.get(code))
+      .map(([code, section]) => resolveEquivalentCourse(code, section))
       .filter((c): c is NonNullable<typeof c> => !!c);
-    const byCategory = sumWorkloadByCategory(plannedCourses);
+    
+    const byCategory = sumWorkloadByCategory(plannedCourses as any[]);
     return {
       mandatory: byCategory.mandatory,
       elective: byCategory.elective,
       complementary: byCategory.complementary,
       total: byCategory.mandatory + byCategory.elective + byCategory.complementary,
     };
-  }, [plannedDisciplines, coursesByCode]);
+  }, [plannedDisciplines, coursesByCode, courses]);
+
+  const disciplinesCount = useMemo(() => {
+    let mandatory = 0;
+    let elective = 0;
+    let offered = 0;
+
+    for (const [code, section] of plannedDisciplines) {
+      const courseData = resolveEquivalentCourse(code, section);
+      
+      if (courseData) {
+        const isOffered = (courseData.level || '').includes('Ofertada');
+        if (isOffered) offered++;
+        
+        const levelRaw = courseData.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim().toLowerCase() || '';
+        if (levelRaw.includes('optativ')) {
+          elective++;
+        } else if (levelRaw.includes('semestre')) {
+          mandatory++;
+        } else {
+          const t = (courseData.type || '').toLowerCase();
+          if (t.includes('optativa')) elective++;
+          else mandatory++; // Fallback
+        }
+      }
+    }
+    return { mandatory, elective, offered };
+  }, [plannedDisciplines, coursesByCode, courses]);
 
   const renderTabContent = () => {
     if (activeTab === 'progress') {
@@ -173,42 +212,71 @@ const Index = () => {
               </div>
             )}
 
-            <div className={`grid gap-3 sm:gap-4 mb-6 ${isFull && hasImportedHistory ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
-              <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <BookOpen className="w-4 h-4 shrink-0" />
-                  <span className="text-xs">Disciplinas Planejadas</span>
+            <div className={`grid gap-3 sm:gap-4 mb-6 ${isFull && hasImportedHistory ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+              <div className="bg-card rounded-xl border border-border p-4 sm:p-5 grid grid-cols-2 gap-4 divide-x divide-border min-h-[120px]">
+                {/* Lado Esquerdo: Disciplinas Planejadas */}
+                <div className="flex flex-col justify-start pr-2 sm:pr-4 h-full">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-3 h-5">
+                    <BookOpen className="w-4 h-4 shrink-0" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Planejamento</span>
+                  </div>
+                  <div className="flex items-end gap-3 sm:gap-4 flex-wrap mt-auto mb-auto">
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-4xl sm:text-5xl font-bold text-card-foreground tracking-tight">{scheduledCount}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground leading-tight">disciplinas na grade</p>
+                    </div>
+                    <div className="flex flex-col gap-1 pb-1">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 shrink-0"></span>
+                        <span className="font-semibold text-foreground">{disciplinesCount.mandatory}</span> Obrigatórias
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400 shrink-0"></span>
+                        <span className="font-semibold text-foreground">{disciplinesCount.elective}</span> Optativas
+                      </p>
+                      {disciplinesCount.offered > 0 && (
+                        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"></span>
+                          <span className="font-semibold text-foreground">{disciplinesCount.offered}</span> Ofertadas
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-card-foreground">{scheduledCount}</p>
-                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">na grade do semestre</p>
-              </div>
 
-              <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Clock className="w-4 h-4 shrink-0" />
-                  <span className="text-xs">Carga Horária</span>
-                </div>
-                <p className="text-xl sm:text-2xl font-bold text-card-foreground">{workloadBreakdown.total}h</p>
-                <div className="mt-1.5 space-y-0.5">
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    <span className="font-semibold text-blue-600 dark:text-blue-400">{workloadBreakdown.mandatory}h</span>
-                    {' '}obrigatórias
-                  </p>
-                  <p className="text-[10px] sm:text-xs text-muted-foreground">
-                    <span className="font-semibold text-purple-600 dark:text-purple-400">{workloadBreakdown.elective}h</span>
-                    {' '}optativas
-                  </p>
-                  {workloadBreakdown.complementary > 0 && (
-                    <p className="text-[10px] sm:text-xs text-muted-foreground">
-                      <span className="font-semibold text-green-600 dark:text-green-400">{workloadBreakdown.complementary}h</span>
-                      {' '}complementares
+                {/* Lado Direito: Carga Horária */}
+                <div className="flex flex-col justify-start pl-4 sm:pl-6 h-full">
+                  <div className="flex items-center gap-2 text-muted-foreground mb-3 h-5">
+                    <Clock className="w-4 h-4 shrink-0" />
+                    <span className="text-xs font-medium uppercase tracking-wider">Carga Horária</span>
+                  </div>
+                  <div className="flex items-end gap-3 sm:gap-4 flex-wrap mt-auto mb-auto">
+                    <p className="text-4xl sm:text-5xl font-bold text-card-foreground tracking-tight flex items-baseline">
+                      {workloadBreakdown.total}
+                      <span className="text-xl sm:text-2xl font-medium text-muted-foreground ml-0.5">h</span>
                     </p>
-                  )}
+                    <div className="flex flex-col gap-1 pb-1">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 shrink-0"></span>
+                        <span className="font-semibold text-foreground">{workloadBreakdown.mandatory}h</span> Obrigatórias
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400 shrink-0"></span>
+                        <span className="font-semibold text-foreground">{workloadBreakdown.elective}h</span> Optativas
+                      </p>
+                      {workloadBreakdown.complementary > 0 && (
+                        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 shrink-0"></span>
+                          <span className="font-semibold text-foreground">{workloadBreakdown.complementary}h</span> Comp.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {isFull && hasImportedHistory && (
-                <div className="bg-card rounded-xl border border-border p-3 sm:p-4 col-span-2 sm:col-span-1">
+                <div className="bg-card rounded-xl border border-border p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground mb-2">
                     <TrendingUp className="w-4 h-4 shrink-0" />
                     <span className="text-xs">Prévia da progressão</span>

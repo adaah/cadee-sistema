@@ -53,6 +53,17 @@ export function useOverallProgress(): OverallProgressData {
     };
   }, []);
 
+  const resolveEquivalentCourse = (code: string, coursesByCode: Map<string, any>, sectionCourse?: any) => {
+    let course = coursesByCode.get(code);
+    if (!course) {
+      course = courses.find(c => 
+        (c.equivalents || []).includes(code) || 
+        (sectionCourse?.equivalents || []).includes(c.code)
+      );
+    }
+    return course || sectionCourse;
+  };
+
   // Calcular carga horária das disciplinas planejadas por categoria
   const plannedWorkload = useMemo(() => {
     const workload = { mandatory: 0, elective: 0, complementary: 0 };
@@ -63,10 +74,11 @@ export function useOverallProgress(): OverallProgressData {
       const code = section.course?.code || (section as { course_code?: string }).course_code;
       if (code && !plannedCodes.has(code)) {
         plannedCodes.add(code);
-        const course = coursesByCode.get(code);
-        if (course) {
-          const courseWorkload = getCourseWorkload(course as any);
-          const courseType = (course as any).type;
+        
+        const courseData = resolveEquivalentCourse(code, coursesByCode, section.course);
+        if (courseData) {
+          const courseWorkload = getCourseWorkload(courseData as any);
+          const courseType = (courseData as any).type;
           const category = getWorkloadCategory(typeof courseType === 'string' ? courseType : undefined);
           if (category === 'mandatory') workload.mandatory += courseWorkload;
           else if (category === 'elective') workload.elective += courseWorkload;
@@ -84,10 +96,10 @@ export function useOverallProgress(): OverallProgressData {
     const coursesByCode = new Map(courses.map((c) => [c.code, c]));
     
     completedDisciplines.forEach((code) => {
-      const course = coursesByCode.get(code);
-      if (course) {
-        const workload = getCourseWorkload(course);
-        const courseType = (course as any).type;
+      const courseData = resolveEquivalentCourse(code, coursesByCode);
+      if (courseData) {
+        const workload = getCourseWorkload(courseData as any);
+        const courseType = (courseData as any).type;
         const category = getWorkloadCategory(typeof courseType === 'string' ? courseType : undefined);
         if (category === 'mandatory') bonus.mandatory += workload;
         else if (category === 'elective') bonus.elective += workload;
