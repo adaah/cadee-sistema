@@ -147,25 +147,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     disciplineStatuses[code] ?? null;
 
   const exportSettings = (): string => {
-    const settings: AppSettings = {
-      completedDisciplines,
-      isOnboarded,
-    };
-    return JSON.stringify(settings, null, 2);
+    const settings: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        settings[key] = localStorage.getItem(key) || '';
+      }
+    }
+    return JSON.stringify({ cadeeBackup: true, version: 1, data: settings }, null, 2);
   };
 
   const importSettings = (json: string): boolean => {
     try {
-      const settings = JSON.parse(json) as Partial<AppSettings & { selectedCourse?: string | null }>;
-      if (Array.isArray(settings.completedDisciplines))
-        setCompletedDisciplines(settings.completedDisciplines);
-      if (settings.isOnboarded !== undefined) setIsOnboarded(settings.isOnboarded);
-      if (settings.selectedCourse) {
-        try {
-          localStorage.setItem('selectedPrograms', JSON.stringify([settings.selectedCourse]));
-        } catch {}
+      const parsed = JSON.parse(json);
+      
+      if (!parsed.cadeeBackup) {
+        // Formato antigo
+        if (Array.isArray(parsed.completedDisciplines))
+          setCompletedDisciplines(parsed.completedDisciplines);
+        if (parsed.isOnboarded !== undefined) setIsOnboarded(parsed.isOnboarded);
+        if (parsed.selectedCourse) {
+          try {
+            localStorage.setItem('selectedPrograms', JSON.stringify([parsed.selectedCourse]));
+          } catch {}
+        }
+        return true;
       }
-      return true;
+
+      // Novo formato (cópia integral do localStorage)
+      const data = parsed.data;
+      if (data && typeof data === 'object') {
+        localStorage.clear();
+        for (const [key, value] of Object.entries(data)) {
+          if (typeof value === 'string') {
+            localStorage.setItem(key, value);
+          }
+        }
+        // Recarregar a página após um breve tempo para aplicar os estados e mostrar o toast
+        setTimeout(() => {
+          window.location.href = '/'; // Redireciona para o início pra garantir um recarregamento limpo
+        }, 1500);
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }
