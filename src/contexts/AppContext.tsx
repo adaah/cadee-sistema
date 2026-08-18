@@ -4,6 +4,13 @@ import { atomWithStorage } from 'jotai/utils';
 import type { DisciplineStatus, SemesterOutcome } from '@/lib/semester';
 import { emptySemesterOutcome } from '@/lib/semester';
 
+export interface CustomCourseWorkload {
+  enabled: boolean;
+  mandatory: number;
+  elective: number;
+  complementary: number;
+}
+
 interface AppSettings {
   completedDisciplines: string[];
   isOnboarded: boolean;
@@ -17,6 +24,8 @@ interface AppContextType {
   setDisciplineStatus: (code: string, status: DisciplineStatus, term?: string) => void;
   clearDisciplineStatus: (code: string, term?: string) => void;
   semesterOutcomes: Record<string, SemesterOutcome>;
+  customCourseWorkload: CustomCourseWorkload;
+  setCustomCourseWorkload: (value: CustomCourseWorkload | ((prev: CustomCourseWorkload) => CustomCourseWorkload)) => void;
   theme: 'light' | 'dark';
   toggleTheme: () => void;
   isOnboarded: boolean;
@@ -30,6 +39,12 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const completedDisciplinesAtom = atomWithStorage<string[]>('completedDisciplines', []);
 const disciplineStatusesAtom = atomWithStorage<Record<string, DisciplineStatus>>('disciplineStatuses', {});
 const semesterOutcomesAtom = atomWithStorage<Record<string, SemesterOutcome>>('semesterOutcomes', {});
+const customCourseWorkloadAtom = atomWithStorage<CustomCourseWorkload>('customCourseWorkload', {
+  enabled: false,
+  mandatory: 0,
+  elective: 0,
+  complementary: 0,
+});
 
 // Detectar tema do sistema se não houver preferência salva
 const getInitialTheme = (): 'light' | 'dark' => {
@@ -139,9 +154,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const semesterOutcomes = useAtomValue(semesterOutcomesAtom);
   const setDisciplineStatus = useSetAtom(setDisciplineStatusAtom);
   const clearDisciplineStatus = useSetAtom(clearDisciplineStatusAtom);
+  const [customCourseWorkload, setCustomCourseWorkloadInternal] = useAtom(customCourseWorkloadAtom);
   const toggleTheme = useSetAtom(toggleThemeAtom);
   const isOnboarded = useAtomValue(onboardedAtom);
   const setIsOnboarded = useSetAtom(onboardedAtom);
+
+  const setCustomCourseWorkload = (
+    value: CustomCourseWorkload | ((prev: CustomCourseWorkload) => CustomCourseWorkload)
+  ) => {
+    setCustomCourseWorkloadInternal(value);
+    setTimeout(() => {
+      window.dispatchEvent(new Event('progressDataUpdated'));
+    }, 0);
+  };
 
   const getDisciplineStatus = (code: string): DisciplineStatus | null =>
     disciplineStatuses[code] ?? null;
@@ -205,6 +230,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setDisciplineStatus,
         clearDisciplineStatus,
         semesterOutcomes,
+        customCourseWorkload,
+        setCustomCourseWorkload,
         theme,
         toggleTheme,
         isOnboarded,

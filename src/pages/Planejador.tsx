@@ -1545,6 +1545,7 @@ function SectionDetailModal({
   const detailCourseCode = isBlockCourseCode(courseCode) ? getBlockCourseBaseCode(courseCode) : courseCode;
   const { data: courseDetail } = useCourseByCode(detailCourseCode);
   const courseName = courseDetail?.name || (section as any)?.course?.name || 'Nome não disponível';
+  const { currentTerm } = useCurrentTerm();
   
   // Buscar todas as seções para encontrar correspondentes de blocos
   const { data: allSections = [] } = useSections();
@@ -1831,7 +1832,7 @@ function SectionDetailModal({
                 </div>
                 <div>
                   <span className="font-semibold text-muted-foreground">Período:</span>
-                  <p className="mt-1">{(section as any)?.period || 'Não informado'}</p>
+                  <p className="mt-1">{(section as any)?.period || (section as any)?.term || currentTerm || 'Não informado'}</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -2448,7 +2449,7 @@ function SectionsList({
                     </div>
                     <div>
                       <span className="font-semibold text-muted-foreground">Período:</span>
-                      <p className="mt-1">{(section as any)?.period || 'Não informado'}</p>
+                      <p className="mt-1">{(section as any)?.period || (section as any)?.term || currentTerm || 'Não informado'}</p>
                     </div>
                   </div>
                   <div className="space-y-2">

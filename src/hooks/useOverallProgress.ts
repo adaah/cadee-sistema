@@ -29,7 +29,7 @@ export interface OverallProgressData {
 }
 
 export function useOverallProgress(): OverallProgressData {
-  const { completedDisciplines, semesterOutcomes } = useApp();
+  const { completedDisciplines, semesterOutcomes, customCourseWorkload } = useApp();
   const { myPrograms, selectedPrograms } = useMyPrograms();
   const { courses } = useMyCourses();
   const { mySections } = useMySections();
@@ -137,10 +137,17 @@ export function useOverallProgress(): OverallProgressData {
   const progressData = useMemo(() => {
     const parsedWorkload = savedParsedData?.workload;
 
-    // Requisitos: histórico importado ou grade curricular
-    const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory || 0;
-    const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective || 0;
-    const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary || 0;
+    // Requisitos: se a carga horária manual estiver ativa, usa os valores manuais;
+    // senão: histórico importado ou grade curricular
+    let mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory || 0;
+    let electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective || 0;
+    let complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary || 0;
+
+    if (customCourseWorkload?.enabled) {
+      mandatoryTotal = customCourseWorkload.mandatory;
+      electivesTotal = customCourseWorkload.elective;
+      complementaryTotal = customCourseWorkload.complementary;
+    }
 
     // Horas completadas: histórico + disciplinas manuais adicionais
     const mandatoryCompleted = (parsedWorkload?.mandatory.completed ?? 0) + manualWorkloadBonus.mandatory;
@@ -154,7 +161,7 @@ export function useOverallProgress(): OverallProgressData {
       electives: { completed: electivesCompleted, total: electivesTotal },
       complementary: { completed: complementaryCompleted, total: complementaryTotal },
     };
-  }, [savedParsedData, manualWorkloadBonus, curriculumRequirements]);
+  }, [savedParsedData, manualWorkloadBonus, curriculumRequirements, customCourseWorkload]);
 
   const totalRequiredHours = progressData.mandatory.total + progressData.electives.total + progressData.complementary.total;
   

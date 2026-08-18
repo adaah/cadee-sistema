@@ -1,27 +1,164 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useApp } from '@/contexts/AppContext';
 import { useMySections } from '@/hooks/useMySections';
 import { useMyPrograms } from '@/hooks/useMyPrograms';
-import { Sun, Moon, Trash2, RotateCcw, User, Download, Upload, Check, X } from 'lucide-react';
+import { useOverallProgress } from '@/hooks/useOverallProgress';
+import {
+  Sun,
+  Moon,
+  Trash2,
+  RotateCcw,
+  User,
+  Download,
+  Upload,
+  Check,
+  Clock,
+  AlertCircle,
+  Save,
+} from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const Configuracoes = () => {
   const {
     theme,
     toggleTheme,
     setIsOnboarded,
-    completedDisciplines,
     exportSettings,
-    importSettings
+    importSettings,
+    customCourseWorkload,
+    setCustomCourseWorkload,
   } = useApp();
   const { clearSections } = useMySections();
+  const { myPrograms } = useMyPrograms();
+  const overallProgress = useOverallProgress();
 
-  const { myPrograms, removeProgram } = useMyPrograms();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importSuccess, setImportSuccess] = useState(false);
 
+  // Verificação se há histórico importado
+  const hasImportedHistory = Boolean(localStorage.getItem('progressData'));
+
+  // Estados locais do formulário de carga horária
+  const [formMandatory, setFormMandatory] = useState<number | string>(() => {
+    if (customCourseWorkload?.enabled) return customCourseWorkload.mandatory;
+    return overallProgress.mandatory.total || 0;
+  });
+  const [formElective, setFormElective] = useState<number | string>(() => {
+    if (customCourseWorkload?.enabled) return customCourseWorkload.elective;
+    return overallProgress.electives.total || 0;
+  });
+  const [formComplementary, setFormComplementary] = useState<number | string>(() => {
+    if (customCourseWorkload?.enabled) return customCourseWorkload.complementary;
+    return overallProgress.complementary.total || 0;
+  });
+
+  // Diálogo de confirmação para ativar/desativar
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'enable' | 'disable' | null>(null);
+
+  // Sincronizar estados locais caso as propriedades externas mudem
+  useEffect(() => {
+    if (customCourseWorkload?.enabled) {
+      setFormMandatory(customCourseWorkload.mandatory);
+      setFormElective(customCourseWorkload.elective);
+      setFormComplementary(customCourseWorkload.complementary);
+    } else {
+      setFormMandatory(overallProgress.mandatory.total || 0);
+      setFormElective(overallProgress.electives.total || 0);
+      setFormComplementary(overallProgress.complementary.total || 0);
+    }
+  }, [
+    customCourseWorkload?.enabled,
+    customCourseWorkload?.mandatory,
+    customCourseWorkload?.elective,
+    customCourseWorkload?.complementary,
+    overallProgress.mandatory.total,
+    overallProgress.electives.total,
+    overallProgress.complementary.total,
+  ]);
+
   const hasPrograms = myPrograms.length > 0;
+
+  const handleToggleClick = (checked: boolean) => {
+    if (checked) {
+      setPendingAction('enable');
+      setConfirmDialogOpen(true);
+    } else {
+      setPendingAction('disable');
+      setConfirmDialogOpen(true);
+    }
+  };
+
+  const handleConfirmAction = () => {
+    if (pendingAction === 'enable') {
+      const m = Math.max(0, Number(formMandatory) || 0);
+      const e = Math.max(0, Number(formElective) || 0);
+      const c = Math.max(0, Number(formComplementary) || 0);
+
+      setCustomCourseWorkload({
+        enabled: true,
+        mandatory: m,
+        elective: e,
+        complementary: c,
+      });
+
+      toast({
+        title: "Edição manual ativada",
+        description: "Você pode ajustar a carga horária obrigatória, optativa e complementar.",
+      });
+    } else if (pendingAction === 'disable') {
+      setCustomCourseWorkload((prev) => ({
+        ...prev,
+        enabled: false,
+      }));
+
+      toast({
+        title: "Edição manual desativada",
+        description: "Os requisitos de carga horária padrão foram restaurados.",
+      });
+    }
+
+    setConfirmDialogOpen(false);
+    setPendingAction(null);
+  };
+
+  const handleSaveHours = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const m = Math.max(0, Number(formMandatory) || 0);
+    const eHours = Math.max(0, Number(formElective) || 0);
+    const c = Math.max(0, Number(formComplementary) || 0);
+
+    setCustomCourseWorkload({
+      enabled: true,
+      mandatory: m,
+      elective: eHours,
+      complementary: c,
+    });
+
+    toast({
+      title: "Carga horária atualizada",
+      description: `Requisitos definidos para ${m + eHours + c}h no total (${m}h obrigatórias, ${eHours}h optativas, ${c}h complementares).`,
+    });
+  };
+
+  const calculatedTotal =
+    (Number(formMandatory) || 0) +
+    (Number(formElective) || 0) +
+    (Number(formComplementary) || 0);
 
   const handleResetAll = () => {
     if (confirm('Tem certeza que deseja resetar todos os dados? Esta ação não pode ser desfeita.')) {
@@ -39,7 +176,6 @@ const Configuracoes = () => {
   };
 
   const handleAddCourse = () => {
-    // Reabre o onboarding para adicionar mais um curso
     setIsOnboarded(false);
   };
 
@@ -49,7 +185,6 @@ const Configuracoes = () => {
     const fileName = `cadee-configuracoes-${new Date().toISOString().split('T')[0]}.json`;
     const file = new File([blob], fileName, { type: 'application/json' });
 
-    // Try to use Web Share API for mobile sharing
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
         await navigator.share({
@@ -63,14 +198,12 @@ const Configuracoes = () => {
         });
         return;
       } catch (error) {
-        // User cancelled or share failed, fall back to download
         if ((error as Error).name !== 'AbortError') {
           console.error('Erro ao compartilhar:', error);
         }
       }
     }
 
-    // Fallback to traditional download
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -94,7 +227,7 @@ const Configuracoes = () => {
     reader.onload = (e) => {
       const content = e.target?.result as string;
       const success = importSettings(content);
-      
+
       if (success) {
         setImportSuccess(true);
         toast({
@@ -111,8 +244,7 @@ const Configuracoes = () => {
       }
     };
     reader.readAsText(file);
-    
-    // Reset input
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -174,28 +306,148 @@ const Configuracoes = () => {
               </button>
             </div>
 
+            {/* Carga Horária Manual do Curso */}
+            <div className="bg-card rounded-xl border border-border p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-card-foreground">Carga Horária do Curso</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {customCourseWorkload?.enabled
+                        ? 'Edição manual ativada'
+                        : 'Valores de carga horária do curso'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="manual-workload-switch"
+                    checked={Boolean(customCourseWorkload?.enabled)}
+                    onCheckedChange={handleToggleClick}
+                    aria-label="Ativar edição manual de carga horária"
+                  />
+                </div>
+              </div>
+
+              {/* Quadro Informativo */}
+              <div className="p-3.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-950 dark:text-blue-200 leading-relaxed flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-semibold block text-blue-900 dark:text-blue-300">
+                    Para que serve este ajuste?
+                  </span>
+                  <p>
+                    Esta opção permite definir manualmente a carga horária exigida de disciplinas obrigatórias, optativas e complementares do seu curso.
+                  </p>
+                  <p className="text-[11px] text-muted-foreground dark:text-blue-200/80">
+                    Útil para quem não possui o histórico escolar em PDF, para casos onde houve divergência na contagem automática da importação, ou para quem os dados cadastrados no SIGAA estão inconsistentes.
+                  </p>
+                </div>
+              </div>
+
+              {/* Formulário de Edição (quando ativado) */}
+              {customCourseWorkload?.enabled && (
+                <form onSubmit={handleSaveHours} className="space-y-4 pt-2 border-t border-border animate-fade-in">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* Horas Obrigatórias */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="mandatory-hours" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                        Obrigatórias (h)
+                      </Label>
+                      <Input
+                        id="mandatory-hours"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formMandatory}
+                        onChange={(e) => setFormMandatory(e.target.value)}
+                        placeholder="Ex: 2400"
+                        className="text-sm font-medium"
+                      />
+                    </div>
+
+                    {/* Horas Optativas */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="elective-hours" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0" />
+                        Optativas (h)
+                      </Label>
+                      <Input
+                        id="elective-hours"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formElective}
+                        onChange={(e) => setFormElective(e.target.value)}
+                        placeholder="Ex: 600"
+                        className="text-sm font-medium"
+                      />
+                    </div>
+
+                    {/* Horas Complementares */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="complementary-hours" className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                        Complementares (h)
+                      </Label>
+                      <Input
+                        id="complementary-hours"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={formComplementary}
+                        onChange={(e) => setFormComplementary(e.target.value)}
+                        placeholder="Ex: 200"
+                        className="text-sm font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Resumo do Total */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted/60 border border-border text-xs">
+                    <span className="text-muted-foreground font-medium">Carga Horária Total Resultante:</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {calculatedTotal}h
+                    </span>
+                  </div>
+
+                  {/* Botão de Salvar */}
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-lg bg-primary text-primary-foreground font-medium text-xs sm:text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <Save className="w-4 h-4" />
+                    Salvar Carga Horária
+                  </button>
+                </form>
+              )}
+            </div>
+
             {/* Theme */}
             <div className="bg-card rounded-xl border border-border p-5">
               <h3 className="font-semibold text-card-foreground mb-4">Aparência</h3>
               <div className="flex gap-3">
                 <button
                   onClick={() => theme === 'dark' && toggleTheme()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                    theme === 'light' 
-                      ? 'border-primary bg-primary/10 text-primary' 
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${theme === 'light'
+                      ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <Sun className="w-5 h-5" />
                   <span>Claro</span>
                 </button>
                 <button
                   onClick={() => theme === 'light' && toggleTheme()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${
-                    theme === 'dark' 
-                      ? 'border-primary bg-primary/10 text-primary' 
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border-2 transition-all ${theme === 'dark'
+                      ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   <Moon className="w-5 h-5" />
                   <span>Escuro</span>
@@ -222,11 +474,10 @@ const Configuracoes = () => {
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-colors ${
-                    importSuccess
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-colors ${importSuccess
                       ? 'border-success bg-success/10 text-success'
                       : 'border-border text-muted-foreground hover:bg-muted'
-                  }`}
+                    }`}
                 >
                   {importSuccess ? <Check className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
                   <span>{importSuccess ? 'Importado!' : 'Importar'}</span>
@@ -263,6 +514,46 @@ const Configuracoes = () => {
             </div>
           </div>
         </div>
+
+        {/* Diálogo de Confirmação para Ativar/Desativar */}
+        <AlertDialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingAction === 'enable'
+                  ? hasImportedHistory
+                    ? 'Substituir carga horária do histórico?'
+                    : 'Ativar edição manual de carga horária?'
+                  : 'Restaurar carga horária padrão?'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingAction === 'enable' ? (
+                  hasImportedHistory ? (
+                    <span>
+                      Atenção: Os dados atuais de carga horária do seu curso são baseados no histórico escolar importado do SIGAA. Ao ativar a edição manual, esses requisitos serão substituídos pelos valores informados aqui. Tem certeza de que deseja continuar?
+                    </span>
+                  ) : (
+                    <span>
+                      Tem certeza de que deseja ativar a edição manual das horas obrigatórias, optativas e complementares do seu curso?
+                    </span>
+                  )
+                ) : (
+                  <span>
+                    Ao desativar a edição manual, as horas exigidas do curso voltarão a ser calculadas automaticamente com base no histórico importado ou na matriz curricular padrão. Tem certeza de que deseja restaurar?
+                  </span>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmDialogOpen(false)}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmAction}>
+                {pendingAction === 'enable' ? 'Confirmar' : 'Sim, restaurar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Footer */}
         <div className="text-center text-sm text-muted-foreground pt-12 pb-4">

@@ -17,7 +17,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from 'react';
 
 export function ProgressView() {
-  const { completedDisciplines, toggleCompletedDiscipline, semesterOutcomes, getDisciplineStatus } = useApp();
+  const { completedDisciplines, toggleCompletedDiscipline, semesterOutcomes, getDisciplineStatus, customCourseWorkload } = useApp();
   const { myPrograms } = useMyPrograms();
   const { courses, isLoading: coursesLoading } = useMyCourses();
   const { mySections } = useMySections();
@@ -283,14 +283,21 @@ export function ProgressView() {
     [plannedDisciplinesList]
   );
 
-  const usesCurriculumTotals = !parsedWorkload;
+  const usesCurriculumTotals = !parsedWorkload && !customCourseWorkload?.enabled;
 
-  // Calcular métricas baseadas no histórico importado + marcações manuais + grade curricular
+  // Calcular métricas baseadas no histórico importado + marcações manuais + grade curricular + ajuste manual
   const progressData = useMemo(() => {
-    // Requisitos: histórico importado ou grade curricular
-    const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory || 0;
-    const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective || 0;
-    const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary || 0;
+    // Requisitos: se a carga horária manual estiver ativa, usa os valores manuais;
+    // senão: histórico importado ou grade curricular
+    let mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory || 0;
+    let electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective || 0;
+    let complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary || 0;
+
+    if (customCourseWorkload?.enabled) {
+      mandatoryTotal = customCourseWorkload.mandatory;
+      electivesTotal = customCourseWorkload.elective;
+      complementaryTotal = customCourseWorkload.complementary;
+    }
 
     const mandatoryCompleted =
       (parsedWorkload?.mandatory.completed ?? 0) + manualWorkloadBonus.mandatory;
@@ -319,6 +326,7 @@ export function ProgressView() {
     manualWorkloadBonus,
     curriculumRequirements,
     courseLevels.length,
+    customCourseWorkload,
   ]);
 
   const mergedSemesters = useMemo(() => {
