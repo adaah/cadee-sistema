@@ -33,9 +33,9 @@ export function extractCurrentTerm(sections: Section[]): string | null {
 }
 
 export function getWorkloadCategory(type?: string): WorkloadCategory {
-  const t = (type || '').toUpperCase();
-  if (t === 'OPT' || t === 'OPTATIVO') return 'elective';
-  if (t === 'COMP' || t === 'COMPLEMENTAR') return 'complementary';
+  const t = (type || '').toUpperCase().trim();
+  if (t.includes('OPT')) return 'elective';
+  if (t.includes('COMP')) return 'complementary';
   return 'mandatory';
 }
 

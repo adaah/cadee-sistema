@@ -14,6 +14,7 @@ import type { DisciplineStatus } from '@/lib/semester';
 import { formatTimeCodes } from '@/lib/schedule';
 import { cn } from '@/lib/utils';
 import { getBlockCourseBaseCode, isBlockCourseCode, resolveBlockCourseName, getBlockCourseVariantLabel, findCorrespondingBlockSections } from '@/lib/blockCourses';
+import { usePlannedDisciplineCategories } from '@/hooks/usePlannedDisciplineCategories';
 
 const STATUS_CONFIG: Record<DisciplineStatus, { label: string; icon: typeof CheckCircle2; activeClass: string }> = {
   approved: {
@@ -47,6 +48,7 @@ export function ScheduleSummary() {
   const { courses } = useMyCourses();
   const { data: coursesIndex = [] } = useCourses();
   const { data: allSections = [] } = useSections();
+  const { plannedDisciplines: classifiedDisciplines } = usePlannedDisciplineCategories();
   const { getDisciplineStatus, setDisciplineStatus, clearDisciplineStatus } = useApp();
   const { currentTerm } = useCurrentTerm();
   const { pendingTransition, statusTerm, planningTerm, unresolvedCodes } = useSemesterTransition();
@@ -274,6 +276,36 @@ export function ScheduleSummary() {
                       {workload && (
                         <span className="text-[10px] text-muted-foreground">{workload}h</span>
                       )}
+                      {(() => {
+                        const info = classifiedDisciplines.find((p) => p.baseCode === baseCode);
+                        if (!info) return null;
+                        if (info.isEquivalent) {
+                          return (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                              Equivalente
+                            </span>
+                          );
+                        }
+                        if (info.category === 'mandatory') {
+                          return (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                              Obrigatória
+                            </span>
+                          );
+                        }
+                        if (info.category === 'elective') {
+                          return (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                              Optativa
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            Ofertada
+                          </span>
+                        );
+                      })()}
                     </div>
                     <p className="font-medium text-card-foreground text-sm sm:text-base leading-snug mt-0.5">
                       {disciplineName}

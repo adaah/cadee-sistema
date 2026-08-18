@@ -64,6 +64,40 @@ const Disciplinas = () => {
   // Set de códigos que já tentamos buscar (mesmo que 404) para não ficar repetindo.
   const [attemptedCodes, setAttemptedCodes] = useState<Set<string>>(new Set());
 
+  // Helper extrai equivalentes de um detalhe já carregado (dev base codes)
+  const extractEquivalentBaseCodes = useCallback((detail: CourseApi | undefined): Set<string> => {
+    const out = new Set<string>();
+    const equivalences = (detail as any)?.equivalences as any[][] | undefined;
+    if (!equivalences) return out;
+    for (const grp of equivalences) {
+      if (!Array.isArray(grp)) continue;
+      for (const eq of grp) {
+        const eqCode = (eq as any)?.code as string | undefined;
+        if (eqCode) out.add(getBlockCourseBaseCode(eqCode));
+      }
+    }
+    return out;
+  }, []);
+
+  const getPersistedEquivalences = useCallback((): Record<string, string[]> => {
+    try {
+      return JSON.parse(localStorage.getItem('cadee_equivalences') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const persistEquivalences = useCallback((base: string, eqs: string[]) => {
+    if (eqs.length === 0) return;
+    try {
+      const map = JSON.parse(localStorage.getItem('cadee_equivalences') || '{}');
+      map[base] = eqs;
+      localStorage.setItem('cadee_equivalences', JSON.stringify(map));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   // Helpers para ler/escrever cache do queryClient (devolve em memória se já existir)
   const getCachedDetail = useCallback((code: string): CourseApi | undefined => {
     const k = getBlockCourseBaseCode(code);
@@ -92,6 +126,9 @@ const Disciplinas = () => {
         staleTime: 1000 * 60 * 60,
       });
       if (data) {
+        const eqs = extractEquivalentBaseCodes(data as CourseApi);
+        if (eqs.size > 0) persistEquivalences(k, Array.from(eqs));
+        
         setDetailsCache(prev => {
           const next = new Map(prev);
           next.set(k, data as CourseApi);
@@ -104,7 +141,7 @@ const Disciplinas = () => {
       setAttemptedCodes(prev => { const next = new Set(prev); next.add(k); return next; });
       return null;
     }
-  }, [queryClient, attemptedCodes, getCachedDetail]);
+  }, [queryClient, attemptedCodes, getCachedDetail, extractEquivalentBaseCodes, persistEquivalences]);
 
   // Fetch INICIAL: apenas disciplinas SELECIONADAS + CURSADAS (pequeno conjunto, nunca todas).
   // Isso evita as ~300 requisições no carregamento.
@@ -131,20 +168,7 @@ const Disciplinas = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Helper extrai equivalentes de um detalhe já carregado (dev base codes)
-  const extractEquivalentBaseCodes = (detail: CourseApi | undefined): Set<string> => {
-    const out = new Set<string>();
-    const equivalences = (detail as any)?.equivalences as any[][] | undefined;
-    if (!equivalences) return out;
-    for (const grp of equivalences) {
-      if (!Array.isArray(grp)) continue;
-      for (const eq of grp) {
-        const eqCode = (eq as any)?.code as string | undefined;
-        if (eqCode) out.add(getBlockCourseBaseCode(eqCode));
-      }
-    }
-    return out;
-  };
+
 
   // Retorna lista de baseCodes relacionados a um código (ele próprio + equivalentes)
   // Funciona com lazy fetching: se precisar e não tiver, dispara fetch.
@@ -153,17 +177,33 @@ const Disciplinas = () => {
     const out = new Set<string>();
     const base = getBlockCourseBaseCode(code);
     out.add(base);
+    
+    // 1. From current detail in cache
     const detail = getCachedDetail(base);
     if (detail) {
       for (const b of extractEquivalentBaseCodes(detail)) out.add(b);
     }
-    // Também olha sentido inverso: checa se algum curso já carregado referencia este
+    
+    // 2. From persisted cache (survives page reloads)
+    const persisted = getPersistedEquivalences();
+    if (persisted[base]) {
+      for (const b of persisted[base]) out.add(b);
+    }
+
+    // 3. Inverse from detailsCache
     for (const [key, d] of detailsCache.entries()) {
       if (key === base) continue;
       const eqs = extractEquivalentBaseCodes(d);
       if (eqs.has(base)) out.add(key);
     }
-    // Adiciona verificação na lista de cursos do currículo (síncrono e imediato)
+
+    // 4. Inverse from persisted cache
+    for (const [key, eqsArray] of Object.entries(persisted)) {
+      if (key === base) continue;
+      if ((eqsArray as string[]).includes(base)) out.add(key);
+    }
+
+    // 5. From courses array (fallback)
     for (const c of courses) {
       const cBase = getBlockCourseBaseCode(c.code);
       if (cBase === base) continue;
@@ -171,7 +211,7 @@ const Disciplinas = () => {
       if (eqs.has(base)) out.add(cBase);
     }
     return out;
-  }, [detailsCache, getCachedDetail, courses]);
+  }, [detailsCache, getCachedDetail, courses, extractEquivalentBaseCodes, getPersistedEquivalences]);
 
   // Verifica equivalência on-demand (usado em eventos/UI — pode disparar fetch)
   const getRelatedBaseCodesAsync = useCallback(async (code: string): Promise<Set<string>> => {
@@ -1301,11 +1341,130 @@ const Disciplinas = () => {
                   {isParsing && <p className="text-sm text-muted-foreground">Lendo PDF...</p>}
                   {importError && <p className="text-sm text-destructive">{importError}</p>}
 
+                  {/* Métricas de Progresso do Curso - mostra quando há dados importados */}
+                  {parsedWorkload && (
+                    <div className="space-y-3">
+                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                        <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">
+                          Dados de Carga Horária Extraídos
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {/* Obrigatórias */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium text-blue-700 dark:text-blue-300">Obrigatórias</span>
+                              <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                {parsedWorkload.mandatory.required > 0 
+                                  ? Math.min(100, Math.round((parsedWorkload.mandatory.completed / parsedWorkload.mandatory.required) * 100)) 
+                                  : 0}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-blue-100 dark:bg-blue-950 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, parsedWorkload.mandatory.required > 0 ? (parsedWorkload.mandatory.completed / parsedWorkload.mandatory.required) * 100 : 0)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-muted-foreground">
+                              <span>{Math.min(parsedWorkload.mandatory.completed, parsedWorkload.mandatory.required)}h / {parsedWorkload.mandatory.required}h</span>
+                              {parsedWorkload.mandatory.completed > parsedWorkload.mandatory.required && (
+                                <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                  +{parsedWorkload.mandatory.completed - parsedWorkload.mandatory.required}h excedentes
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Optativas */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium text-purple-700 dark:text-purple-300">Optativas</span>
+                              <span className="font-semibold text-purple-700 dark:text-purple-300">
+                                {parsedWorkload.elective.required > 0 
+                                  ? Math.min(100, Math.round((parsedWorkload.elective.completed / parsedWorkload.elective.required) * 100)) 
+                                  : 0}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-purple-100 dark:bg-purple-950 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, parsedWorkload.elective.required > 0 ? (parsedWorkload.elective.completed / parsedWorkload.elective.required) * 100 : 0)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-muted-foreground">
+                              <span>{Math.min(parsedWorkload.elective.completed, parsedWorkload.elective.required)}h / {parsedWorkload.elective.required}h</span>
+                              {parsedWorkload.elective.completed > parsedWorkload.elective.required && (
+                                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                                  +{parsedWorkload.elective.completed - parsedWorkload.elective.required}h excedentes
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Complementares */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="font-medium text-green-700 dark:text-green-300">Complementares</span>
+                              <span className="font-semibold text-green-700 dark:text-green-300">
+                                {parsedWorkload.complementary.required > 0 
+                                  ? Math.min(100, Math.round((parsedWorkload.complementary.completed / parsedWorkload.complementary.required) * 100)) 
+                                  : 0}%
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full bg-green-100 dark:bg-green-950 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-green-500 rounded-full transition-all duration-500"
+                                style={{ width: `${Math.min(100, parsedWorkload.complementary.required > 0 ? (parsedWorkload.complementary.completed / parsedWorkload.complementary.required) * 100 : 0)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs text-muted-foreground">
+                              <span>{Math.min(parsedWorkload.complementary.completed, parsedWorkload.complementary.required)}h / {parsedWorkload.complementary.required}h</span>
+                              {parsedWorkload.complementary.completed > parsedWorkload.complementary.required && (
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  +{parsedWorkload.complementary.completed - parsedWorkload.complementary.required}h excedentes
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          {/* Total */}
+                          <div className="border-t pt-3 mt-1 space-y-1">
+                            {(() => {
+                              const cappedTotal = Math.min(parsedWorkload.mandatory.completed, parsedWorkload.mandatory.required) +
+                                Math.min(parsedWorkload.elective.completed, parsedWorkload.elective.required) +
+                                Math.min(parsedWorkload.complementary.completed, parsedWorkload.complementary.required);
+                              const totalReq = parsedWorkload.mandatory.required + parsedWorkload.elective.required + parsedWorkload.complementary.required;
+                              const totalPct = totalReq > 0 ? Math.min(100, Math.round((cappedTotal / totalReq) * 100)) : 0;
+                              return (
+                                <>
+                                  <div className="flex justify-between items-center text-sm">
+                                    <span className="font-semibold text-foreground">Progresso Geral</span>
+                                    <span className="font-bold text-foreground">{totalPct}%</span>
+                                  </div>
+                                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-green-500 rounded-full transition-all duration-500"
+                                      style={{ width: `${totalPct}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                    <span>{cappedTotal}h / {totalReq}h exigidas</span>
+                                    <span>{totalPct}% concluído</span>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">
                       Disciplinas aprovadas detectadas: {parsedCodes.length}
                     </p>
-                    <div className="flex flex-wrap gap-2 max-h-40 overflow-auto border border-border/70 rounded-lg p-2">
+                    <div className="flex flex-wrap gap-2 max-h-36 overflow-auto border border-border/70 rounded-lg p-2">
                       {parsedCodes.length === 0 ? (
                         <span className="text-xs text-muted-foreground">Nenhuma encontrada ainda.</span>
                       ) : (

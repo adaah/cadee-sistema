@@ -1,4 +1,5 @@
-import { Info, X } from 'lucide-react';
+import { InfoPopup } from '@/components/ui/info-popup';
+import { X } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -225,16 +226,10 @@ export function AdvancedSemesterGrid({
               </span>
             )}
             {showInfo && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="w-3.5 h-3.5 text-muted-foreground" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs max-w-[200px]">{infoText}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <InfoPopup
+                iconClassName="w-3.5 h-3.5"
+                content={infoText}
+              />
             )}
           </div>
         </div>

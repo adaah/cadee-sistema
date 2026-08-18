@@ -9,13 +9,15 @@ import { useMode } from '@/hooks/useMode';
 import { fetchProgramDetail, type ProgramDetail } from '@/services/api';
 import { parseCompleteHistory, type WorkloadData, type SemesterDisciplineData } from '@/utils/historyParser';
 import { getCourseWorkload, getWorkloadCategory, mergeSemesterOutcomes, sumWorkloadByCategory } from '@/lib/semester';
-import { GraduationCap, BookOpen, Clock, Info, Upload, X, Shield } from 'lucide-react';
+import { getBlockCourseBaseCode } from '@/lib/blockCourses';
+import { InfoPopup } from '@/components/ui/info-popup';
+import { Upload, X, Shield, GraduationCap } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from 'react';
 
 export function ProgressView() {
-  const { completedDisciplines, toggleCompletedDiscipline, semesterOutcomes } = useApp();
+  const { completedDisciplines, toggleCompletedDiscipline, semesterOutcomes, getDisciplineStatus } = useApp();
   const { myPrograms } = useMyPrograms();
   const { courses, isLoading: coursesLoading } = useMyCourses();
   const { mySections } = useMySections();
@@ -259,36 +261,36 @@ export function ProgressView() {
     return bonus;
   }, [completedDisciplines, semesterOutcomes, parsedCodes, courses]);
 
+  const plannedDisciplinesList = useMemo(() => {
+    const map = new Map<string, { code: string; name?: string; baseCode: string }>();
+    mySections.forEach((s) => {
+      const code = s.course?.code || (s as any).course_code || '';
+      if (!code) return;
+      const baseCode = getBlockCourseBaseCode(code);
+      if (!map.has(baseCode)) {
+        map.set(baseCode, {
+          code: baseCode,
+          name: s.course?.name || (s as any).course_name || (courses.find((c) => getBlockCourseBaseCode(c.code) === baseCode)?.name),
+          baseCode,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [mySections, courses]);
+
   const enrolledCodes = useMemo(
-    () => mySections.map((s) => s.course?.code).filter(Boolean) as string[],
-    [mySections]
+    () => plannedDisciplinesList.map((d) => d.baseCode),
+    [plannedDisciplinesList]
   );
 
   const usesCurriculumTotals = !parsedWorkload;
 
   // Calcular métricas baseadas no histórico importado + marcações manuais + grade curricular
   const progressData = useMemo(() => {
-    // Se não houver histórico importado, usa apenas dados manuais do planejador
-    if (!parsedWorkload) {
-      // Usa apenas as disciplinas marcadas manualmente
-      const mandatoryCompleted = manualWorkloadBonus.mandatory;
-      const electivesCompleted = manualWorkloadBonus.elective;
-      const complementaryCompleted = manualWorkloadBonus.complementary;
-      const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
-
-      return {
-        totalHours,
-        mandatory: { completed: mandatoryCompleted, total: mandatoryCompleted },
-        electives: { completed: electivesCompleted, total: electivesCompleted },
-        complementary: { completed: complementaryCompleted, total: complementaryCompleted },
-        totalSemesters: courseLevels.length || 8,
-      };
-    }
-
-    // Com histórico importado, usa os dados do histórico + manuais
-    const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory;
-    const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective;
-    const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary;
+    // Requisitos: histórico importado ou grade curricular
+    const mandatoryTotal = parsedWorkload?.mandatory.required || curriculumRequirements.mandatory || 0;
+    const electivesTotal = parsedWorkload?.elective.required || curriculumRequirements.elective || 0;
+    const complementaryTotal = parsedWorkload?.complementary.required || curriculumRequirements.complementary || 0;
 
     const mandatoryCompleted =
       (parsedWorkload?.mandatory.completed ?? 0) + manualWorkloadBonus.mandatory;
@@ -296,10 +298,16 @@ export function ProgressView() {
       (parsedWorkload?.elective.completed ?? 0) + manualWorkloadBonus.elective;
     const complementaryCompleted =
       (parsedWorkload?.complementary.completed ?? 0) + manualWorkloadBonus.complementary;
-    const totalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
+    const rawTotalHours = mandatoryCompleted + electivesCompleted + complementaryCompleted;
+
+    const cappedMandatory = Math.min(mandatoryCompleted, mandatoryTotal);
+    const cappedElectives = Math.min(electivesCompleted, electivesTotal);
+    const cappedComplementary = Math.min(complementaryCompleted, complementaryTotal);
+    const effectiveTotalHours = cappedMandatory + cappedElectives + cappedComplementary;
 
     return {
-      totalHours,
+      rawTotalHours,
+      effectiveTotalHours,
       mandatory: { completed: mandatoryCompleted, total: mandatoryTotal },
       electives: { completed: electivesCompleted, total: electivesTotal },
       complementary: { completed: complementaryCompleted, total: complementaryTotal },
@@ -321,22 +329,41 @@ export function ProgressView() {
       const approved = outcome?.approved.length ?? 0;
       const failed = outcome?.failed.length ?? 0;
       const dropped = outcome?.dropped.length ?? 0;
-      const notDone = Math.max(0, enrolledCodes.length - approved - failed - dropped);
+      const notDone = Math.max(0, plannedDisciplinesList.length - approved - failed - dropped);
 
-      if (approved + failed + dropped + notDone > 0) {
+      if (plannedDisciplinesList.length > 0 || approved + failed + dropped > 0) {
         result = [
           ...result,
           { term: currentTerm, approved, failed, dropped, notDone, isCurrent: true },
         ];
       }
+    } else if (currentTerm) {
+      result = result.map((s) => {
+        if (s.term === currentTerm) {
+          const outcome = semesterOutcomes[currentTerm];
+          const approved = outcome?.approved.length ?? s.approved;
+          const failed = outcome?.failed.length ?? s.failed;
+          const dropped = outcome?.dropped.length ?? s.dropped;
+          const notDone = Math.max(0, plannedDisciplinesList.length - approved - failed - dropped);
+          return {
+            ...s,
+            approved,
+            failed,
+            dropped,
+            notDone,
+            isCurrent: true,
+          };
+        }
+        return s;
+      });
     }
 
     return result.sort((a, b) => a.term.localeCompare(b.term));
-  }, [parsedSemesters, semesterOutcomes, currentTerm, enrolledCodes]);
+  }, [parsedSemesters, semesterOutcomes, currentTerm, plannedDisciplinesList]);
 
   const totalRequiredHours = progressData.mandatory.total + progressData.electives.total + progressData.complementary.total;
   const overallProgress = totalRequiredHours > 0 
-    ? (progressData.totalHours / totalRequiredHours) * 100 
+    ? Math.min(100, (progressData.effectiveTotalHours / totalRequiredHours) * 100)
     : 0;
 
   return (
@@ -415,127 +442,64 @@ export function ProgressView() {
         )}
       </div>
 
-      {/* Overall Progress */}
-      <div className="bg-card rounded-lg border border-border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-foreground">Progresso Geral</h2>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-4 h-4 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs max-w-[200px]">Progresso total baseado nas horas cursadas em relação às horas exigidas do curso.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <div className="flex items-center gap-2">
+      {/* Unified Progress Card (Geral + Obrigatórias + Optativas + Complementares) */}
+      <div className="bg-card rounded-xl border border-border p-5 md:p-6 space-y-6">
+        {/* Overall Progress Top Section */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Progresso Geral</h2>
+              <InfoPopup 
+                iconClassName="w-4 h-4"
+                content="Progresso total baseado nas horas cursadas em relação às horas exigidas do curso (limitado ao teto de cada categoria)."
+              />
+            </div>
             <span className="text-2xl font-bold text-foreground">
-              {overallProgress.toFixed(2)}%
+              {overallProgress.toFixed(1)}%
             </span>
           </div>
+          <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+            <span>{progressData.effectiveTotalHours} / {totalRequiredHours} horas</span>
+          </div>
+          <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-green-500 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, overallProgress)}%` }}
+            />
+          </div>
         </div>
-        <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-          <span>{progressData.totalHours} / {totalRequiredHours} horas</span>
-        </div>
-        <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-green-500 rounded-full transition-all duration-500"
-            style={{ width: `${overallProgress}%` }}
-          />
-        </div>
-      </div>
 
-      {/* Progress Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <ProgressCard 
-          title="Obrigatórias" 
-          current={progressData.mandatory.completed} 
-          total={progressData.mandatory.total}
-          showInfo
-          isEstimated={false}
-          infoText="Horas de disciplinas obrigatórias do curso."
-        />
-        <ProgressCard 
-          title="Optativas" 
-          current={progressData.electives.completed} 
-          total={progressData.electives.total}
-          showInfo
-          isEstimated={false}
-          infoText="Horas de disciplinas optativas."
-        />
-        <ProgressCard 
-          title="Complementares" 
-          current={progressData.complementary.completed} 
-          total={progressData.complementary.total}
-          showInfo
-          isEstimated={false}
-          infoText="Horas de atividades complementares."
-        />
-      </div>
-
-      {/* Stats - Movido para antes do Progresso por Semestre para mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-card rounded-lg border border-border p-4 flex items-center gap-3">
-          <div className="p-2 rounded-full bg-blue-100 dark:bg-blue-900/50">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+        {/* Divider & Category Progress Columns */}
+        <div className="pt-5 border-t border-border/60">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+            <ProgressCard 
+              title="Obrigatórias" 
+              current={progressData.mandatory.completed} 
+              total={progressData.mandatory.total}
+              category="mandatory"
+              showInfo
+              isEstimated={usesCurriculumTotals}
+              infoText="Horas de disciplinas obrigatórias do curso."
+            />
+            <ProgressCard 
+              title="Optativas" 
+              current={progressData.electives.completed} 
+              total={progressData.electives.total}
+              category="elective"
+              showInfo
+              isEstimated={usesCurriculumTotals}
+              infoText="Horas de disciplinas optativas."
+            />
+            <ProgressCard 
+              title="Complementares" 
+              current={progressData.complementary.completed} 
+              total={progressData.complementary.total}
+              category="complementary"
+              showInfo
+              isEstimated={usesCurriculumTotals}
+              infoText="Horas de atividades complementares."
+            />
           </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Disciplinas Cursadas</p>
-            <p className="text-xl font-semibold">{completedDisciplines.length}</p>
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs max-w-[200px]">Total de disciplinas que você marcou como concluídas na tela Disciplinas.</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        
-        <div className="bg-card rounded-lg border border-border p-4 flex items-center gap-3">
-          <div className="p-2 rounded-full bg-green-100 dark:bg-green-900/50">
-            <Clock className="w-5 h-5 text-green-600 dark:text-green-400" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Horas Concluídas</p>
-            <p className="text-xl font-semibold">{progressData.totalHours}</p>
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs max-w-[200px]">Total de horas cursadas com base no histórico acadêmico importado.</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-        
-        <div className="bg-card rounded-lg border border-border p-4 flex items-center gap-3">
-          <div className="p-2 rounded-full bg-purple-100 dark:bg-purple-900/50">
-            <GraduationCap className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Semestres</p>
-            <p className="text-xl font-semibold">{courseLevels.length}</p>
-          </div>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Info className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="text-xs max-w-[200px]">Total de semestres/períodos do seu curso baseado na estrutura curricular.</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </div>
 
@@ -560,35 +524,114 @@ export function ProgressView() {
                 Vigente: {currentTerm}
               </span>
             )}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs max-w-[250px]">Aproveitamento por período letivo. O semestre vigente ({currentTerm || '—'}) é destacado e inclui resultados marcados na tela inicial.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <InfoPopup 
+              iconClassName="w-3.5 h-3.5"
+              content={`Aproveitamento por período letivo. O semestre vigente (${currentTerm || '—'}) é destacado e inclui resultados marcados na tela inicial.`}
+            />
           </div>
         </div>
 
         <div className="space-y-3">
           {mergedSemesters.map(({ term, approved, failed, dropped, notDone, isCurrent }) => {
+            const isCurrentTerm = isCurrent || term === currentTerm;
+
+            // Se for o semestre vigente e houver disciplinas planejadas:
+            if (isCurrentTerm && plannedDisciplinesList.length > 0) {
+              const currentItems = plannedDisciplinesList.map((d) => {
+                const rawStatus = getDisciplineStatus(d.baseCode);
+                const isOutcomeApproved = semesterOutcomes[currentTerm || '']?.approved?.includes(d.baseCode);
+                const isOutcomeFailed = semesterOutcomes[currentTerm || '']?.failed?.includes(d.baseCode);
+                const isOutcomeDropped = semesterOutcomes[currentTerm || '']?.dropped?.includes(d.baseCode);
+                const isCompleted = completedDisciplines.includes(d.baseCode);
+
+                let status: 'approved' | 'failed' | 'dropped' | 'none' = 'none';
+                if (rawStatus === 'approved' || isOutcomeApproved || isCompleted) {
+                  status = 'approved';
+                } else if (rawStatus === 'failed' || isOutcomeFailed) {
+                  status = 'failed';
+                } else if (rawStatus === 'dropped' || isOutcomeDropped) {
+                  status = 'dropped';
+                }
+
+                let colorClass = 'bg-gray-300 dark:bg-gray-700/60';
+                let title = 'Não finalizado / Em andamento';
+
+                if (status === 'approved') {
+                  colorClass = 'bg-green-500';
+                  title = 'Aprovação';
+                } else if (status === 'failed') {
+                  colorClass = 'bg-red-500';
+                  title = 'Reprovação';
+                } else if (status === 'dropped') {
+                  colorClass = 'bg-gray-700';
+                  title = 'Trancamento';
+                }
+
+                return {
+                  code: d.baseCode,
+                  name: d.name,
+                  status,
+                  colorClass,
+                  tooltip: `${title}: ${d.baseCode}${d.name ? ` — ${d.name}` : ''}`,
+                };
+              });
+
+              const currentApprovedCount = currentItems.filter((i) => i.status === 'approved').length;
+              const currentTotalCount = currentItems.length;
+
+              return (
+                <div
+                  key={term}
+                  className="space-y-2 rounded-lg p-2 -mx-2 bg-primary/5 border border-primary/20"
+                >
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-primary">
+                        {term}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
+                        Atual
+                      </span>
+                    </div>
+                    <span className="text-muted-foreground text-xs">
+                      {currentApprovedCount}/{currentTotalCount} disciplinas
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-8 gap-1">
+                    {currentItems.map((item, index) => (
+                      <TooltipProvider key={index}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div
+                              className={`h-4 rounded-sm ${item.colorClass} cursor-pointer hover:opacity-80 transition-opacity`}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">{item.tooltip}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            // Para semestres passados ou quando não há turmas planejadas:
             const total = approved + failed + dropped + notDone;
             const semesterDisciplines = disciplinesBySemester.get(term);
 
             return (
               <div
                 key={term}
-                className={`space-y-2 rounded-lg p-2 -mx-2 ${isCurrent ? 'bg-primary/5 border border-primary/20' : ''}`}
+                className={`space-y-2 rounded-lg p-2 -mx-2 ${isCurrentTerm ? 'bg-primary/5 border border-primary/20' : ''}`}
               >
                 <div className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <span className={isCurrent ? 'font-semibold text-primary' : 'text-muted-foreground'}>
+                    <span className={isCurrentTerm ? 'font-semibold text-primary' : 'text-muted-foreground'}>
                       {term}
                     </span>
-                    {isCurrent && (
+                    {isCurrentTerm && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
                         Atual
                       </span>
@@ -617,7 +660,7 @@ export function ProgressView() {
                       title = 'Trancamento';
                       disciplineCode = semesterDisciplines?.dropped[index - approved - failed];
                     } else {
-                      colorClass = 'bg-gray-300';
+                      colorClass = 'bg-gray-300 dark:bg-gray-700/60';
                       title = 'Não feito';
                     }
 
@@ -628,7 +671,7 @@ export function ProgressView() {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <div
-                              className={`h-4 rounded-sm ${colorClass} cursor-pointer`}
+                              className={`h-4 rounded-sm ${colorClass} cursor-pointer hover:opacity-80 transition-opacity`}
                             />
                           </TooltipTrigger>
                           <TooltipContent>
@@ -813,74 +856,115 @@ export function ProgressView() {
                     {parsedWorkload ? (
                       <div className="space-y-3">
                         <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                          <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-2">
+                          <div className="text-xs text-green-600 dark:text-green-400 font-medium mb-3">
                             Dados Extraídos do Histórico
                           </div>
                           <div className="grid grid-cols-1 gap-3">
                             {/* Obrigatórias */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Obrigatórias:</span>
-                              <div className="text-right">
-                                <span className="text-lg font-bold text-blue-700 dark:text-blue-300">
-                                  {parsedWorkload.mandatory.completed}h
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-blue-700 dark:text-blue-300">Obrigatórias</span>
+                                <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                  {parsedWorkload.mandatory.required > 0 
+                                    ? Math.min(100, Math.round((parsedWorkload.mandatory.completed / parsedWorkload.mandatory.required) * 100)) 
+                                    : 0}%
                                 </span>
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  / {parsedWorkload.mandatory.required}h
-                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-blue-100 dark:bg-blue-950 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, parsedWorkload.mandatory.required > 0 ? (parsedWorkload.mandatory.completed / parsedWorkload.mandatory.required) * 100 : 0)}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                <span>{Math.min(parsedWorkload.mandatory.completed, parsedWorkload.mandatory.required)}h / {parsedWorkload.mandatory.required}h</span>
+                                {parsedWorkload.mandatory.completed > parsedWorkload.mandatory.required && (
+                                  <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                    +{parsedWorkload.mandatory.completed - parsedWorkload.mandatory.required}h excedentes
+                                  </span>
+                                )}
                               </div>
                             </div>
                             
                             {/* Optativas */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Optativas:</span>
-                              <div className="text-right">
-                                <span className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                                  {parsedWorkload.elective.completed}h
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-purple-700 dark:text-purple-300">Optativas</span>
+                                <span className="font-semibold text-purple-700 dark:text-purple-300">
+                                  {parsedWorkload.elective.required > 0 
+                                    ? Math.min(100, Math.round((parsedWorkload.elective.completed / parsedWorkload.elective.required) * 100)) 
+                                    : 0}%
                                 </span>
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  / {parsedWorkload.elective.required}h
-                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-purple-100 dark:bg-purple-950 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, parsedWorkload.elective.required > 0 ? (parsedWorkload.elective.completed / parsedWorkload.elective.required) * 100 : 0)}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                <span>{Math.min(parsedWorkload.elective.completed, parsedWorkload.elective.required)}h / {parsedWorkload.elective.required}h</span>
+                                {parsedWorkload.elective.completed > parsedWorkload.elective.required && (
+                                  <span className="text-purple-600 dark:text-purple-400 font-medium">
+                                    +{parsedWorkload.elective.completed - parsedWorkload.elective.required}h excedentes
+                                  </span>
+                                )}
                               </div>
                             </div>
                             
                             {/* Complementares */}
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm font-medium text-green-700 dark:text-green-300">Complementares:</span>
-                              <div className="text-right">
-                                <span className="text-lg font-bold text-green-700 dark:text-green-300">
-                                  {parsedWorkload.complementary.completed}h
+                            <div className="space-y-1">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="font-medium text-green-700 dark:text-green-300">Complementares</span>
+                                <span className="font-semibold text-green-700 dark:text-green-300">
+                                  {parsedWorkload.complementary.required > 0 
+                                    ? Math.min(100, Math.round((parsedWorkload.complementary.completed / parsedWorkload.complementary.required) * 100)) 
+                                    : 0}%
                                 </span>
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  / {parsedWorkload.complementary.required}h
-                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-green-100 dark:bg-green-950 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full bg-green-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.min(100, parsedWorkload.complementary.required > 0 ? (parsedWorkload.complementary.completed / parsedWorkload.complementary.required) * 100 : 0)}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                <span>{Math.min(parsedWorkload.complementary.completed, parsedWorkload.complementary.required)}h / {parsedWorkload.complementary.required}h</span>
+                                {parsedWorkload.complementary.completed > parsedWorkload.complementary.required && (
+                                  <span className="text-green-600 dark:text-green-400 font-medium">
+                                    +{parsedWorkload.complementary.completed - parsedWorkload.complementary.required}h excedentes
+                                  </span>
+                                )}
                               </div>
                             </div>
                             
                             {/* Total */}
-                            <div className="border-t pt-2 mt-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm font-semibold text-foreground">Total:</span>
-                                <div className="text-right">
-                                  <span className="text-xl font-bold text-foreground">
-                                    {parsedWorkload.total.completed}h
-                                  </span>
-                                  <span className="text-sm text-muted-foreground ml-1">
-                                    / {parsedWorkload.total.required}h
-                                  </span>
-                                </div>
-                              </div>
-                              {/* Barra de progresso real */}
-                              <div className="mt-2">
-                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                  <div 
-                                    className="h-full bg-green-500 rounded-full transition-all duration-500"
-                                    style={{ width: `${Math.round((parsedWorkload.total.completed / parsedWorkload.total.required) * 100)}%` }}
-                                  />
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1 text-right">
-                                  {Math.round((parsedWorkload.total.completed / parsedWorkload.total.required) * 100)}% concluído
-                                </div>
-                              </div>
+                            <div className="border-t pt-3 mt-1 space-y-1">
+                              {(() => {
+                                const cappedTotal = Math.min(parsedWorkload.mandatory.completed, parsedWorkload.mandatory.required) +
+                                  Math.min(parsedWorkload.elective.completed, parsedWorkload.elective.required) +
+                                  Math.min(parsedWorkload.complementary.completed, parsedWorkload.complementary.required);
+                                const totalReq = parsedWorkload.mandatory.required + parsedWorkload.elective.required + parsedWorkload.complementary.required;
+                                const totalPct = totalReq > 0 ? Math.min(100, Math.round((cappedTotal / totalReq) * 100)) : 0;
+                                return (
+                                  <>
+                                    <div className="flex justify-between items-center text-sm">
+                                      <span className="font-semibold text-foreground">Progresso Geral</span>
+                                      <span className="font-bold text-foreground">{totalPct}%</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-green-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${totalPct}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs text-muted-foreground">
+                                      <span>{cappedTotal}h / {totalReq}h exigidas</span>
+                                      <span>{totalPct}% concluído</span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>

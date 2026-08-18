@@ -26,6 +26,7 @@ import { fetchProgramDetail } from '@/services/api';
 import { useSemesterTransition } from '@/hooks/useSemesterTransition';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { getBlockCourseBaseCode, getBlockCourseVariantLabel, groupDisciplinesByBlock, isBlockCourseCode, resolveBlockCourseName } from '@/lib/blockCourses';
+import { isCurriculumElective, isCurriculumMandatory } from '@/hooks/usePlannedDisciplineCategories';
 
 const diasSemana = ["SEG", "TER", "QUA", "QUI", "SEX", "SAB"];
 const mapSiglaParaNome = {
@@ -40,6 +41,73 @@ const horariosGrade = [
   "07:00", "07:55", "08:50", "09:45", "10:40", "11:35", "13:00", "13:55", 
   "14:50", "15:45", "16:40", "17:35", "18:30", "19:25", "20:20", "21:15"
 ];
+
+// Helper síncrono para buscar códigos equivalentes persistidos
+export const getEquivalentCodesSync = (code: string): string[] => {
+  const base = getBlockCourseBaseCode(code);
+  const out = new Set<string>([base]);
+  try {
+    const persisted = JSON.parse(localStorage.getItem('cadee_equivalences') || '{}') as Record<string, string[]>;
+    if (persisted[base]) {
+      persisted[base].forEach((eq) => out.add(getBlockCourseBaseCode(eq)));
+    }
+    for (const [key, eqs] of Object.entries(persisted)) {
+      if (eqs.some((eq) => getBlockCourseBaseCode(eq) === base)) {
+        out.add(getBlockCourseBaseCode(key));
+      }
+    }
+  } catch {}
+  return Array.from(out);
+};
+
+export type DisciplineBadgeType = 'mandatory' | 'elective' | 'equivalent' | 'offered';
+
+export function getDisciplineBadge(
+  code: string,
+  courseLevel?: string,
+  courseType?: string,
+  curriculumMandatorySet?: Set<string>,
+  curriculumElectiveSet?: Set<string>,
+  getEquivalentCodes: (code: string) => string[] = getEquivalentCodesSync
+): { label: string; type: DisciplineBadgeType } {
+  const baseCode = getBlockCourseBaseCode(code);
+
+  // 1. Checagem direta se é obrigatória no currículo
+  if (curriculumMandatorySet?.has(baseCode)) {
+    return { label: 'Obrigatória', type: 'mandatory' };
+  }
+  // 2. Checagem direta se é optativa no currículo
+  if (curriculumElectiveSet?.has(baseCode)) {
+    return { label: 'Optativa', type: 'elective' };
+  }
+
+  // 3. Checagem direta do metadata do curso (caso não esteja marcado como ofertada)
+  const isOfferedLevel = (courseLevel || '').includes('Ofertada');
+  if (!isOfferedLevel) {
+    const levelRaw = (courseLevel || '').toLowerCase();
+    const typeRaw = (courseType || '').toUpperCase();
+    if (typeRaw.includes('OPT') || levelRaw.includes('optat')) {
+      return { label: 'Optativa', type: 'elective' };
+    }
+    if (levelRaw.includes('semestre') || typeRaw.includes('OBR')) {
+      return { label: 'Obrigatória', type: 'mandatory' };
+    }
+  }
+
+  // 4. Checagem por equivalência: equivale a alguma obrigatória ou optativa do currículo?
+  if (curriculumMandatorySet || curriculumElectiveSet) {
+    const equivalents = getEquivalentCodes(baseCode);
+    for (const eq of equivalents) {
+      if (eq === baseCode) continue;
+      if (curriculumMandatorySet?.has(eq) || curriculumElectiveSet?.has(eq)) {
+        return { label: 'Equivalente', type: 'equivalent' };
+      }
+    }
+  }
+
+  // 5. Caso contrário: Ofertada
+  return { label: 'Ofertada', type: 'offered' };
+}
 
 // Função helper para parsear time_codes e converter para formato de horários
 const parseTimeCodes = (timeCodes: string[]): Array<{ dia: string; horarioInicio: string; horarioFim: string }> => {
@@ -106,67 +174,75 @@ const DisciplineCard = memo(({
   course, 
   onClick,
   isSelected = false,
-  conflictCodes = []
+  conflictCodes = [],
+  curriculumMandatorySet,
+  curriculumElectiveSet,
 }: { 
   course: Course; 
   onClick: (course: Course) => void;
   isSelected?: boolean;
   conflictCodes?: string[];
+  curriculumMandatorySet?: Set<string>;
+  curriculumElectiveSet?: Set<string>;
 }) => {
   const { completedDisciplines } = useApp();
   const isCompleted = completedDisciplines.includes(course.code);
-  const isOffered = (course.level || '').includes('Ofertada');
-  const levelDisplayRaw = course.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim();
-  let levelDisplay = levelDisplayRaw;
-  if (levelDisplayRaw) {
-    if (levelDisplayRaw.toLowerCase().includes('optativ')) {
-      levelDisplay = 'Optativa';
-    } else if (levelDisplayRaw.toLowerCase().includes('semestre')) {
-      levelDisplay = `Obrigatória - ${levelDisplayRaw}`;
-    }
-  }
+  const badgeInfo = getDisciplineBadge(
+    course.code,
+    course.level,
+    course.type,
+    curriculumMandatorySet,
+    curriculumElectiveSet,
+    getEquivalentCodesSync
+  );
   
   return (
     <div 
       key={course.code}
       data-discipline-code={course.code}
       onClick={() => onClick(course)}
-      className={`p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors relative ${
+      className={`p-3 md:p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors flex flex-col justify-between ${
         isSelected ? 'border-primary ring-1 ring-primary/50 bg-primary/5' : ''
       }`}
     >
-      <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
-        {isCompleted && (
-          <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5">
-            Cursada
-          </Badge>
-        )}
-        {levelDisplay && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-background">
-            {levelDisplay}
-          </Badge>
-        )}
-        {isOffered && (
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-primary/5">
-            Ofertada
-          </Badge>
-        )}
-        {conflictCodes.length > 0 && conflictCodes.map((code) => (
-          <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5">
-            Choque com {code}
-          </Badge>
-        ))}
+      <div>
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="font-semibold text-xs md:text-sm text-foreground min-w-0">
+            <span>{course.code}</span>
+          </div>
+          <span
+            className={cn(
+              "text-[10px] px-1.5 py-0.5 font-medium rounded border shrink-0",
+              badgeInfo.type === 'mandatory' && "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+              badgeInfo.type === 'elective' && "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+              badgeInfo.type === 'equivalent' && "bg-primary/10 text-primary border-primary/20",
+              badgeInfo.type === 'offered' && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+            )}
+          >
+            {badgeInfo.label}
+          </span>
+        </div>
+        <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
+          {course.name}
+        </div>
       </div>
-      <div className="font-semibold text-xs md:text-sm mb-1 pr-16 flex items-center gap-2 flex-wrap">
-        <span>{course.code}</span>
-      </div>
-      <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
-        {course.name}
-      </div>
-      <div className="flex items-center gap-2">
-        <Badge variant="secondary" className="text-xs">
+      <div className="flex flex-wrap items-center gap-1.5 mt-auto pt-1">
+        <Badge variant="secondary" className="text-xs shrink-0">
           {course.sections_count} turma{course.sections_count !== 1 ? 's' : ''}
         </Badge>
+        {isCompleted && (
+          <span className="text-[10px] px-1.5 py-0.5 font-medium rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+            Cursada
+          </span>
+        )}
+        {conflictCodes.length > 0 && conflictCodes.map((code) => (
+          <span
+            key={code}
+            className="text-[10px] px-1.5 py-0.5 font-medium rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 flex items-center gap-1 shrink-0"
+          >
+            Choque com {code}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -179,26 +255,29 @@ const BlockDisciplineGroupCard = memo(({
   indexByCode,
   onCourseClick,
   isSelected = false,
-  conflictCodes = []
+  conflictCodes = [],
+  curriculumMandatorySet,
+  curriculumElectiveSet,
 }: {
   group: ReturnType<typeof groupDisciplinesByBlock>[number];
   indexByCode: Map<string, { name?: string }>;
   onCourseClick: (course: Course) => void;
   isSelected?: boolean;
   conflictCodes?: string[];
+  curriculumMandatorySet?: Set<string>;
+  curriculumElectiveSet?: Set<string>;
 }) => {
   const { completedDisciplines } = useApp();
   const allCompleted = group.courses.every((c) => completedDisciplines.includes(c.code));
-  const isOffered = group.courses.some((c) => (c.level || '').includes('Ofertada'));
-  const firstLevelRaw = group.courses.find((c) => c.level && c.level.trim() !== '' && c.level !== 'Ofertada ao curso')?.level?.replace(' (Ofertada)', '')?.trim();
-  let firstLevel = firstLevelRaw;
-  if (firstLevelRaw) {
-    if (firstLevelRaw.toLowerCase().includes('optativ')) {
-      firstLevel = 'Optativa';
-    } else if (firstLevelRaw.toLowerCase().includes('semestre')) {
-      firstLevel = `Obrigatória - ${firstLevelRaw}`;
-    }
-  }
+  const firstCourse = group.courses[0];
+  const badgeInfo = getDisciplineBadge(
+    group.baseCode,
+    firstCourse?.level,
+    firstCourse?.type,
+    curriculumMandatorySet,
+    curriculumElectiveSet,
+    getEquivalentCodesSync
+  );
 
   return (
     <div
@@ -209,38 +288,42 @@ const BlockDisciplineGroupCard = memo(({
     >
       <div className="p-3 md:p-4 bg-muted/30 border-b">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-semibold text-xs md:text-sm mb-1 pr-2 flex items-center gap-2 flex-wrap">
               <span>{group.baseCode}</span>
             </div>
             <div className="text-xs text-muted-foreground line-clamp-2 pr-2">{group.name}</div>
           </div>
-          <div className="flex flex-col gap-1 items-end shrink-0">
-            {allCompleted && (
-              <Badge variant="default" className="bg-success text-success-foreground text-xs px-2 py-0.5">
-                Cursada
-              </Badge>
+          <span
+            className={cn(
+              "text-[10px] px-1.5 py-0.5 font-medium rounded border shrink-0",
+              badgeInfo.type === 'mandatory' && "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+              badgeInfo.type === 'elective' && "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20",
+              badgeInfo.type === 'equivalent' && "bg-primary/10 text-primary border-primary/20",
+              badgeInfo.type === 'offered' && "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
             )}
-            {firstLevel && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-background">
-                {firstLevel}
-              </Badge>
-            )}
-            {isOffered && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal bg-primary/5">
-                Ofertada
-              </Badge>
-            )}
-            {conflictCodes.length > 0 && conflictCodes.map((code) => (
-              <Badge key={code} variant="default" className="bg-destructive text-destructive-foreground text-[10px] px-2 py-0.5">
-                Choque com {code}
-              </Badge>
-            ))}
-          </div>
+          >
+            {badgeInfo.label}
+          </span>
         </div>
-        <Badge variant="secondary" className="text-xs mt-2">
-          {group.sections_count} turma{group.sections_count !== 1 ? 's' : ''}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {group.sections_count} turma{group.sections_count !== 1 ? 's' : ''}
+          </Badge>
+          {allCompleted && (
+            <span className="text-[10px] px-1.5 py-0.5 font-medium rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+              Cursada
+            </span>
+          )}
+          {conflictCodes.length > 0 && conflictCodes.map((code) => (
+            <span
+              key={code}
+              className="text-[10px] px-1.5 py-0.5 font-medium rounded bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 flex items-center gap-1 shrink-0"
+            >
+              Choque com {code}
+            </span>
+          ))}
+        </div>
       </div>
       <div className="divide-y">
         {group.courses.map((course) => (
@@ -274,12 +357,16 @@ const VirtualizedDisciplineList = memo(({
   courses, 
   onLoadMore, 
   hasMore,
-  onCourseClick 
+  onCourseClick,
+  curriculumMandatorySet,
+  curriculumElectiveSet,
 }: { 
   courses: Course[]; 
   onLoadMore: () => void; 
   hasMore: boolean;
   onCourseClick: (course: Course) => void;
+  curriculumMandatorySet?: Set<string>;
+  curriculumElectiveSet?: Set<string>;
 }) => {
   const [visibleCount, setVisibleCount] = useState(20);
   
@@ -308,6 +395,8 @@ const VirtualizedDisciplineList = memo(({
           key={course.code}
           course={course}
           onClick={onCourseClick}
+          curriculumMandatorySet={curriculumMandatorySet}
+          curriculumElectiveSet={curriculumElectiveSet}
         />
       ))}
       {hasMore && visibleCourses.length < courses.length && (
@@ -392,7 +481,7 @@ const Planejador = () => {
   const [showCompleted, setShowCompleted] = useState(false);
   const [hideFull, setHideFull] = useState(false);
   const [vacancyFilter, setVacancyFilter] = useState<'all' | 'few' | 'many'>('all');
-  const [typeFilter, setTypeFilter] = useState<'all' | 'mandatory' | 'optional' | 'offered'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'mandatory' | 'optional' | 'equivalent' | 'offered'>('all');
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([]);
   const [horariosSelecionados, setHorariosSelecionados] = useState<string[]>([]);
   const [logicaFiltroDia, setLogicaFiltroDia] = useState<'OU' | 'E'>('OU');
@@ -407,6 +496,20 @@ const Planejador = () => {
   const { completedDisciplines } = useApp();
   const { data: allSections = [] } = useSections();
   const { currentTerm } = useCurrentTerm();
+
+  const { curriculumMandatorySet, curriculumElectiveSet } = useMemo(() => {
+    const mandatory = new Set<string>();
+    const elective = new Set<string>();
+    for (const c of courses) {
+      const base = getBlockCourseBaseCode(c.code);
+      if (isCurriculumElective(c)) {
+        elective.add(base);
+      } else if (isCurriculumMandatory(c)) {
+        mandatory.add(base);
+      }
+    }
+    return { curriculumMandatorySet: mandatory, curriculumElectiveSet: elective };
+  }, [courses]);
 
   const hasAnyVacancyData = useMemo(() => {
     return allSections.some((s) => ((s as any)?.seats_accepted ?? 0) > 0 && ((s as any)?.seats_count ?? 0) > 0);
@@ -494,17 +597,26 @@ const Planejador = () => {
 
     if (typeFilter !== 'all') {
       result = result.filter(course => {
-        const typeRaw = (course.type || '').toLowerCase();
-        const levelRaw = (course.level || '').toLowerCase();
+        const badge = getDisciplineBadge(
+          course.code,
+          course.level,
+          course.type,
+          curriculumMandatorySet,
+          curriculumElectiveSet,
+          getEquivalentCodesSync
+        );
         
         if (typeFilter === 'mandatory') {
-           return levelRaw.includes('semestre') && !levelRaw.includes('ofertada');
+           return badge.type === 'mandatory';
         }
         if (typeFilter === 'optional') {
-           return typeRaw.includes('optat') || levelRaw.includes('optat');
+           return badge.type === 'elective';
+        }
+        if (typeFilter === 'equivalent') {
+           return badge.type === 'equivalent';
         }
         if (typeFilter === 'offered') {
-           return levelRaw.includes('ofertada');
+           return badge.type === 'offered';
         }
         return true;
       });
@@ -917,12 +1029,13 @@ const Planejador = () => {
 
                   <Select value={typeFilter} onValueChange={(v: any) => setTypeFilter(v)}>
                     <SelectTrigger className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-accent text-sm font-medium h-auto w-auto">
-                      <span>Tipo: {typeFilter === 'all' ? 'Todas' : typeFilter === 'mandatory' ? 'Obrigatórias' : typeFilter === 'optional' ? 'Optativas' : 'Ofertadas'}</span>
+                      <span>Tipo: {typeFilter === 'all' ? 'Todas' : typeFilter === 'mandatory' ? 'Obrigatórias' : typeFilter === 'optional' ? 'Optativas' : typeFilter === 'equivalent' ? 'Equivalentes' : 'Ofertadas'}</span>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todas</SelectItem>
                       <SelectItem value="mandatory">Obrigatórias</SelectItem>
                       <SelectItem value="optional">Optativas</SelectItem>
+                      <SelectItem value="equivalent">Equivalentes</SelectItem>
                       <SelectItem value="offered">Ofertadas</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1012,6 +1125,8 @@ const Planejador = () => {
                                 onCourseClick={handleShowSections}
                                 isSelected={true}
                                 conflictCodes={conflictCodes}
+                                curriculumMandatorySet={curriculumMandatorySet}
+                                curriculumElectiveSet={curriculumElectiveSet}
                               />
                             ) : (
                               <DisciplineCard
@@ -1020,6 +1135,8 @@ const Planejador = () => {
                                 onClick={handleShowSections}
                                 isSelected={true}
                                 conflictCodes={conflictCodes}
+                                curriculumMandatorySet={curriculumMandatorySet}
+                                curriculumElectiveSet={curriculumElectiveSet}
                               />
                             );
                           })}
@@ -1052,12 +1169,16 @@ const Planejador = () => {
                     group={group}
                     indexByCode={indexByCode}
                     onCourseClick={handleShowSections}
+                    curriculumMandatorySet={curriculumMandatorySet}
+                    curriculumElectiveSet={curriculumElectiveSet}
                   />
                 ) : (
                   <DisciplineCard
                     key={group.courses[0].code}
                     course={group.courses[0] as Course}
                     onClick={handleShowSections}
+                    curriculumMandatorySet={curriculumMandatorySet}
+                    curriculumElectiveSet={curriculumElectiveSet}
                   />
                 )
               )}

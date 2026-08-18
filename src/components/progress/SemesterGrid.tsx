@@ -1,5 +1,4 @@
-import { Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { InfoPopup } from '@/components/ui/info-popup';
 
 interface SemesterGridProps {
   currentSemester: number;
@@ -22,16 +21,10 @@ export function SemesterGrid({
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium text-foreground">Semestre</h3>
           {showInfo && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="w-3.5 h-3.5 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="text-xs max-w-[200px]">{infoText}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <InfoPopup
+              iconClassName="w-3.5 h-3.5"
+              content={infoText}
+            />
           )}
         </div>
         <span className="text-sm font-medium text-foreground">

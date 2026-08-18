@@ -12,7 +12,8 @@ import { Link } from 'react-router-dom';
 import { ProgressView } from '@/components/progress/ProgressView';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useMode } from '@/hooks/useMode';
-import { sumWorkloadByCategory } from '@/lib/semester';
+import { usePlannedDisciplineCategories } from '@/hooks/usePlannedDisciplineCategories';
+import { InfoPopup } from '@/components/ui/info-popup';
 
 const Index = () => {
   const { mySections } = useMySections();
@@ -21,6 +22,7 @@ const Index = () => {
   const { currentTerm } = useCurrentTerm();
   const { pendingTransition, planningTerm, canAdvance, advanceToNewSemester, unresolvedCodes } = useSemesterTransition();
   const overallProgress = useOverallProgress();
+  const { scheduledCount, disciplinesCount, workloadBreakdown } = usePlannedDisciplineCategories();
   const [activeTab, setActiveTab] = useState<'schedule' | 'progress'>('schedule');
   const { setMode, isFull, isSimplified } = useMode();
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
@@ -37,61 +39,6 @@ const Index = () => {
     const savedData = localStorage.getItem('progressData');
     setHasImportedHistory(!!savedData);
   }, []);
-
-  const coursesByCode = useMemo(
-    () => new Map(courses.map((c) => [c.code, c])),
-    [courses]
-  );
-
-  const plannedDisciplines = useMemo(() => {
-    const unique = new Map<string, typeof mySections[0]>();
-    for (const s of mySections) {
-      const code = s.course?.code || (s as { course_code?: string }).course_code;
-      if (code) unique.set(code, s);
-    }
-    return [...unique.entries()];
-  }, [mySections]);
-
-  const scheduledCount = plannedDisciplines.length;
-
-  const workloadBreakdown = useMemo(() => {
-    const plannedCourses = plannedDisciplines
-      .map(([code]) => coursesByCode.get(code))
-      .filter((c): c is NonNullable<typeof c> => !!c);
-    const byCategory = sumWorkloadByCategory(plannedCourses);
-    return {
-      mandatory: byCategory.mandatory,
-      elective: byCategory.elective,
-      complementary: byCategory.complementary,
-      total: byCategory.mandatory + byCategory.elective + byCategory.complementary,
-    };
-  }, [plannedDisciplines, coursesByCode]);
-
-  const disciplinesCount = useMemo(() => {
-    let mandatory = 0;
-    let elective = 0;
-    let offered = 0;
-
-    for (const [code] of plannedDisciplines) {
-      const course = coursesByCode.get(code);
-      if (course) {
-        const isOffered = (course.level || '').includes('Ofertada');
-        if (isOffered) offered++;
-        
-        const levelRaw = course.level?.replace(' (Ofertada)', '')?.replace('Ofertada ao curso', '')?.trim().toLowerCase() || '';
-        if (levelRaw.includes('optativ')) {
-          elective++;
-        } else if (levelRaw.includes('semestre')) {
-          mandatory++;
-        } else {
-          const t = (course.type || '').toLowerCase();
-          if (t.includes('optativa')) elective++;
-          else mandatory++; // Fallback
-        }
-      }
-    }
-    return { mandatory, elective, offered };
-  }, [plannedDisciplines, coursesByCode]);
 
   const renderTabContent = () => {
     if (activeTab === 'progress') {
@@ -251,6 +198,12 @@ const Index = () => {
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400 shrink-0"></span>
                         <span className="font-semibold text-foreground">{workloadBreakdown.elective}h</span> Optativas
                       </p>
+                      {workloadBreakdown.offered > 0 && (
+                        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0"></span>
+                          <span className="font-semibold text-foreground">{workloadBreakdown.offered}h</span> Ofertadas
+                        </p>
+                      )}
                       {workloadBreakdown.complementary > 0 && (
                         <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 shrink-0"></span>
@@ -267,6 +220,10 @@ const Index = () => {
                   <div className="flex items-center gap-2 text-muted-foreground mb-2">
                     <TrendingUp className="w-4 h-4 shrink-0" />
                     <span className="text-xs">Prévia da progressão</span>
+                    <InfoPopup 
+                      iconClassName="w-3.5 h-3.5"
+                      content="Estimativa do progresso da sua formação ao concluir com aprovação as disciplinas planejadas na grade deste semestre."
+                    />
                   </div>
                   
                   {/* Progresso Geral */}
