@@ -459,28 +459,43 @@ const Configuracoes = () => {
           {/* Coluna 2 */}
           <div className="space-y-6">
             {/* Export/Import */}
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h3 className="font-semibold text-card-foreground mb-4">Backup & Sincronização</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Exporte suas configurações para usar em outro dispositivo ou faça backup dos seus dados.
-              </p>
+            <div className="bg-card rounded-xl border border-border p-5 space-y-4">
+              <div>
+                <h3 className="font-semibold text-card-foreground mb-1">Backup & Sincronização</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Exporte ou importe um arquivo JSON completo com todas as suas informações e alterações no sistema.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-muted/50 border border-border text-xs text-muted-foreground space-y-1">
+                <span className="font-medium text-foreground block">Itens inclusos no backup:</span>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                  <li>Turmas e grade horária planejada</li>
+                  <li>Disciplinas concluídas e resultados por período</li>
+                  <li>Histórico escolar do SIGAA importado</li>
+                  <li>Ajustes manuais da carga horária do curso</li>
+                  <li>Curso selecionado, preferências e tema</li>
+                </ul>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={handleExport}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border border-border text-foreground hover:bg-muted font-medium text-xs sm:text-sm transition-colors cursor-pointer"
                 >
-                  <Download className="w-5 h-5" />
-                  <span>Exportar</span>
+                  <Download className="w-4 h-4" />
+                  <span>Exportar Backup</span>
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-colors ${importSuccess
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border font-medium text-xs sm:text-sm transition-colors cursor-pointer ${
+                    importSuccess
                       ? 'border-success bg-success/10 text-success'
-                      : 'border-border text-muted-foreground hover:bg-muted'
-                    }`}
+                      : 'border-border text-foreground hover:bg-muted'
+                  }`}
                 >
-                  {importSuccess ? <Check className="w-5 h-5" /> : <Upload className="w-5 h-5" />}
-                  <span>{importSuccess ? 'Importado!' : 'Importar'}</span>
+                  {importSuccess ? <Check className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                  <span>{importSuccess ? 'Restaurado!' : 'Importar Backup'}</span>
                 </button>
                 <input
                   ref={fileInputRef}

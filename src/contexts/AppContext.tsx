@@ -179,41 +179,113 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settings[key] = localStorage.getItem(key) || '';
       }
     }
-    return JSON.stringify({ cadeeBackup: true, version: 1, data: settings }, null, 2);
+
+    // Garante que os estados atuais em memória estejam explicitamente presentes
+    if (completedDisciplines) {
+      settings['completedDisciplines'] = JSON.stringify(completedDisciplines);
+    }
+    if (disciplineStatuses) {
+      settings['disciplineStatuses'] = JSON.stringify(disciplineStatuses);
+    }
+    if (semesterOutcomes) {
+      settings['semesterOutcomes'] = JSON.stringify(semesterOutcomes);
+    }
+    if (customCourseWorkload) {
+      settings['customCourseWorkload'] = JSON.stringify(customCourseWorkload);
+    }
+    if (isOnboarded !== undefined) {
+      settings['isOnboarded'] = JSON.stringify(isOnboarded);
+    }
+    if (theme) {
+      settings['theme'] = JSON.stringify(theme);
+    }
+
+    const backupPayload = {
+      cadeeBackup: true,
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      summary: {
+        completedDisciplinesCount: completedDisciplines.length,
+        hasHistory: Boolean(settings['progressData']),
+        customWorkloadEnabled: Boolean(customCourseWorkload?.enabled),
+      },
+      data: settings,
+    };
+
+    return JSON.stringify(backupPayload, null, 2);
   };
 
   const importSettings = (json: string): boolean => {
     try {
       const parsed = JSON.parse(json);
-      
-      if (!parsed.cadeeBackup) {
-        // Formato antigo
-        if (Array.isArray(parsed.completedDisciplines))
-          setCompletedDisciplines(parsed.completedDisciplines);
-        if (parsed.isOnboarded !== undefined) setIsOnboarded(parsed.isOnboarded);
-        if (parsed.selectedCourse) {
-          try {
-            localStorage.setItem('selectedPrograms', JSON.stringify([parsed.selectedCourse]));
-          } catch {}
+      if (!parsed || typeof parsed !== 'object') return false;
+
+      // 1. Caso seja backup estruturado (versão 1 ou 2)
+      if (parsed.cadeeBackup && parsed.data && typeof parsed.data === 'object') {
+        localStorage.clear();
+        for (const [key, value] of Object.entries(parsed.data)) {
+          if (typeof value === 'string') {
+            localStorage.setItem(key, value);
+          } else {
+            localStorage.setItem(key, JSON.stringify(value));
+          }
         }
+
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('progressDataUpdated'));
+
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1200);
         return true;
       }
 
-      // Novo formato (cópia integral do localStorage)
-      const data = parsed.data;
-      if (data && typeof data === 'object') {
-        localStorage.clear();
-        for (const [key, value] of Object.entries(data)) {
-          if (typeof value === 'string') {
-            localStorage.setItem(key, value);
+      // 2. Caso seja backup no formato plano / legado
+      const legacyData: Record<string, any> = parsed.data || parsed;
+      let hasValidKey = false;
+
+      const recognizedKeys = [
+        'completedDisciplines',
+        'disciplineStatuses',
+        'semesterOutcomes',
+        'customCourseWorkload',
+        'mySections',
+        'selectedPrograms',
+        'progressData',
+        'isOnboarded',
+        'mode',
+        'experienceMode',
+        'theme',
+        'cadee_equivalences',
+      ];
+
+      for (const key of recognizedKeys) {
+        if (legacyData[key] !== undefined) {
+          hasValidKey = true;
+          const val = legacyData[key];
+          if (typeof val === 'string') {
+            localStorage.setItem(key, val);
+          } else {
+            localStorage.setItem(key, JSON.stringify(val));
           }
         }
-        // Recarregar a página após um breve tempo para aplicar os estados e mostrar o toast
+      }
+
+      if (legacyData.selectedCourse) {
+        hasValidKey = true;
+        localStorage.setItem('selectedPrograms', JSON.stringify([legacyData.selectedCourse]));
+      }
+
+      if (hasValidKey) {
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new Event('progressDataUpdated'));
+
         setTimeout(() => {
-          window.location.href = '/'; // Redireciona para o início pra garantir um recarregamento limpo
-        }, 1500);
+          window.location.href = '/';
+        }, 1200);
         return true;
       }
+
       return false;
     } catch {
       return false;
